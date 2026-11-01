@@ -51,6 +51,7 @@ class FontKit:
         self.palettes: list[list[tuple[float, float, float, float]]] = []
         self._fea_chunks: list[str] = []
         self._names = set(font.getGlyphOrder())
+        self._overrides: dict[int, otTables.Lookup] = {}
 
     # ---- glyphs -----------------------------------------------------------
     def has_glyph(self, name: str) -> bool:
@@ -73,6 +74,16 @@ class FontKit:
             total = x
         self.glyf[name] = pen.glyph()
         self.hmtx[name] = (advance if advance is not None else total, 0)
+        self._register(name)
+
+    def add_contour(self, name: str, advance: int, draw):
+        """Add a glyph with its own outline. `draw(pen)` draws with a pen."""
+        if self.has_glyph(name):
+            raise ValueError(f"glyph {name} already exists")
+        pen = TTGlyphPen(None)
+        draw(pen)
+        self.glyf[name] = pen.glyph()
+        self.hmtx[name] = (advance, 0)
         self._register(name)
 
     def add_empty(self, name: str, advance: int):
@@ -107,13 +118,18 @@ class FontKit:
         self.colr_layers[base] = layers
 
     # ---- features ---------------------------------------------------------
-    def add_fea(self, fea: str):
+    def add_fea(self, fea: str, overrides: dict[int, "otTables.Lookup"] | None = None):
+        """Queue feature code. `overrides` maps a lookup index (in definition
+        order of this fea text) to a hand-built otTables.Lookup that replaces
+        the placeholder lookup compiled from the text."""
         self._fea_chunks.append(fea)
+        if overrides:
+            self._overrides.update(overrides)
 
     # ---- finalize ---------------------------------------------------------
     def finalize(self):
         if self._fea_chunks:
-            merge_gsub(self.font, "\n".join(self._fea_chunks))
+            merge_gsub(self.font, "\n".join(self._fea_chunks), self._overrides)
         if self.colr_layers:
             self.font["COLR"] = buildCOLR(self.colr_layers, version=0)
             self.font["CPAL"] = buildCPAL(self.palettes or [[(0, 0, 0, 1)]])
@@ -142,13 +158,15 @@ def _rebase_lookup_indices(obj, offset: int, seen=None):
             _rebase_lookup_indices(v, offset, seen)
 
 
-def merge_gsub(font: TTFont, fea: str):
+def merge_gsub(font: TTFont, fea: str, overrides: dict[int, otTables.Lookup] | None = None):
     """Compile `fea` with feaLib into a scratch copy, then append its lookups and
     features to the font's existing GSUB (keeping Plex's own features)."""
     scratch = copy.deepcopy(font)
     scratch["GSUB"] = newTable("GSUB")
     addOpenTypeFeaturesFromString(scratch, fea, tables=["GSUB"])
     new = scratch["GSUB"].table
+    for idx, lookup in (overrides or {}).items():
+        new.LookupList.Lookup[idx] = lookup
     if "GSUB" not in font:
         font["GSUB"] = scratch["GSUB"]
         return
@@ -232,3 +250,90 @@ def export(font: TTFont, out_dir: Path, stem: str) -> list[Path]:
         paths.append(p)
     font.flavor = None
     return paths
+
+
+# ---- hand-built chained contextual lookups ----------------------------------
+
+def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000) -> otTables.Lookup:
+    """Build a GSUB type 6 (chained contextual) lookup using format 1 (glyph
+    based rule sets), split across as many Extension-wrapped subtables as the
+    16-bit offset limits require.
+
+    rules: iterable of (input_glyphs, records) or (backtrack, input_glyphs,
+    lookahead, records), where records is [(seq_index, lookup_index), ...], in
+    priority order. Rules are keyed on their first input glyph; for a given
+    first glyph, order is preserved across subtables, so "longest first" works.
+    Backtrack is given in logical order (closest glyph last).
+    """
+    gid = font.getReverseGlyphMap()
+    by_first: dict[str, list] = {}
+    for r in rules:
+        bt, inp, la, recs = r if len(r) == 4 else ([], r[0], [], r[1])
+        by_first.setdefault(inp[0], []).append((bt, inp, la, recs))
+
+    def rule_size(rule):
+        bt, inp, la, recs = rule
+        return 8 + 2 * len(bt) + 2 * (len(inp) - 1) + 2 * len(la) + 4 * len(recs)
+
+    # Chunk: list of (first_glyph, [rules]) that fits in one subtable.
+    subtables: list[list[tuple[str, list]]] = []
+    cur: list[tuple[str, list]] = []
+    cur_size = 0
+
+    def flush():
+        nonlocal cur, cur_size
+        if cur:
+            subtables.append(cur)
+        cur, cur_size = [], 0
+
+    for first, rl in by_first.items():
+        piece, piece_size = [], 2
+        for rule in rl:
+            rs = rule_size(rule) + 2
+            if piece_size + rs > budget:
+                if cur_size + piece_size > budget:
+                    flush()
+                cur.append((first, piece)); cur_size += piece_size + 4
+                piece, piece_size = [], 2
+            piece.append(rule); piece_size += rs
+        if cur_size + piece_size > budget:
+            flush()
+        cur.append((first, piece)); cur_size += piece_size + 4
+    flush()
+
+    lookup = otTables.Lookup()
+    lookup.LookupType = 7
+    lookup.LookupFlag = 0
+    lookup.SubTable = []
+    for chunk in subtables:
+        chunk = sorted(chunk, key=lambda c: gid[c[0]])
+        st = otTables.ChainContextSubst()
+        st.Format = 1
+        st.Coverage = otTables.Coverage()
+        st.Coverage.glyphs = [c[0] for c in chunk]
+        st.ChainSubRuleSet = []
+        for first, rl in chunk:
+            rs = otTables.ChainSubRuleSet()
+            rs.ChainSubRule = []
+            for bt, inp, la, recs in rl:
+                r = otTables.ChainSubRule()
+                r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt)), len(bt)
+                r.Input, r.InputGlyphCount = list(inp[1:]), len(inp)
+                r.LookAhead, r.LookAheadGlyphCount = list(la), len(la)
+                r.SubstLookupRecord = []
+                for seq, li in recs:
+                    rec = otTables.SubstLookupRecord()
+                    rec.SequenceIndex, rec.LookupListIndex = seq, li
+                    r.SubstLookupRecord.append(rec)
+                r.SubstCount = len(r.SubstLookupRecord)
+                rs.ChainSubRule.append(r)
+            rs.ChainSubRuleCount = len(rs.ChainSubRule)
+            st.ChainSubRuleSet.append(rs)
+        st.ChainSubRuleSetCount = len(st.ChainSubRuleSet)
+        ext = otTables.ExtensionSubst()
+        ext.Format = 1
+        ext.ExtensionLookupType = 6
+        ext.ExtSubTable = st
+        lookup.SubTable.append(ext)
+    lookup.SubTableCount = len(lookup.SubTable)
+    return lookup

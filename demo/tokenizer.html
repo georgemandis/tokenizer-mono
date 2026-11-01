@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokenizer Mono</title>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #666; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --muted: #999; } }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { margin-bottom: .25rem; }
+  p, label { color: var(--muted); font-size: .9rem; }
+  .bar { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin: 1rem 0; }
+  select, input[type=range] { font: inherit; }
+  textarea { width: 100%; min-height: 22rem; box-sizing: border-box; padding: .75rem; border: 1px solid #8884; border-radius: 6px;
+    background: var(--bg); color: var(--fg); font-family: "Tokenizer Mono cl100k", monospace; font-size: 22px; line-height: 1.6; }
+  textarea.dark { font-palette: --tok-dark; }
+  #models { font-size: .85rem; }
+</style>
+<h1>Tokenizer Mono</h1>
+<p>A font that tokenizes. Every highlight is drawn by the font itself: no JavaScript touches the text, only OpenType substitution rules and COLR color layers. Type below.</p>
+<div class="bar">
+  <label>Tokenizer <select id="variant"></select></label>
+  <span id="models"></span>
+  <label>Size <input id="size" type="range" min="12" max="48" value="22"></label>
+</div>
+<textarea id="t" spellcheck="false">The quick brown fox jumps over the lazy dog, and nobody is surprised anymore.
+
+Tokenization is the process of splitting text into pieces a language model can count. Common words like "the" become single tokens, while rarer ones get split: antidisestablishmentarianism.
+
+def tokenize(text: str) -> list[int]:
+    return [ord(c) for c in text if c.isprintable()]</textarea>
+<p>Colors cycle through five palette entries per token. Light and dark palettes are chosen with CSS <code>font-palette</code>. Tokens cannot span a line break.</p>
+<style id="faces"></style>
+<script>
+(async () => {
+  const manifest = await (await fetch("../build/tokenizer/manifest.json")).json();
+  const sel = document.getElementById("variant"), ta = document.getElementById("t");
+  const models = document.getElementById("models"), faces = document.getElementById("faces");
+  let css = "";
+  for (const [name, v] of Object.entries(manifest)) {
+    css += `@font-face { font-family: "${v.family}"; src: url("../build/tokenizer/${v.file}") format("woff2"); }\n`;
+    sel.add(new Option(`${name}  (${v.models})`, name));
+  }
+  css += `@font-palette-values --tok-dark { font-family: ${Object.values(manifest).map(v => `"${v.family}"`).join(", ")}; base-palette: 1; }`;
+  faces.textContent = css;
+  const apply = () => { ta.style.fontFamily = `"${manifest[sel.value].family}", monospace`; models.textContent = manifest[sel.value].models; };
+  sel.onchange = apply; apply();
+  document.getElementById("size").oninput = e => ta.style.fontSize = e.target.value + "px";
+  const dark = matchMedia("(prefers-color-scheme: dark)");
+  const pal = () => ta.classList.toggle("dark", dark.matches);
+  dark.addEventListener("change", pal); pal();
+})();
+</script>

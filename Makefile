@@ -1,9 +1,9 @@
 PY := .venv/bin/python
-RECIPES := $(notdir $(wildcard fonts/*))
+RECIPES := $(filter-out tokenizer,$(notdir $(wildcard fonts/*)))
 
 .PHONY: all setup fetch clean test $(RECIPES)
 
-all: $(RECIPES)
+all: $(RECIPES) tokenizer
 
 setup:
 	python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -23,3 +23,11 @@ clean:
 
 shot: smoke
 	$(PY) tools/shot.py build/smoke/SmokeMono-Regular.woff2 build/smoke/shot.png "fire fired misfire fire." "Fire! campfire, fire, FIRE"
+
+# make tokenizer            builds every tokenizer variant
+# make tokenizer V=o200k    builds one
+tokenizer:
+	$(PY) tools/build.py fonts/tokenizer $(if $(V),--variant $(V))
+
+tokcheck:
+	$(PY) tools/tokcheck.py $(or $(V),all)
