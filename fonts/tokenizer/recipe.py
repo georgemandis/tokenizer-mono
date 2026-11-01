@@ -54,12 +54,16 @@ PALETTE_LIGHT = ["#d4c5f9", "#b9eedc", "#fde6a0", "#fecdd3", "#bfe6fd"]
 PALETTE_DARK = ["#4c3a8a", "#1f6b4e", "#7a5a10", "#8a2f45", "#1f5a80"]
 SHAPES = "smex"  # start, middle, end, single
 
-# Box geometry (font units; Plex Mono is 600 wide, 1000 upem). Boxes that
-# continue into the next glyph overlap it by OVERLAP units to hide seams.
+# Box geometry (font units; Plex Mono is 600 wide, 1000 upem).
 # Every box starts at x=0: Chrome/Skia draws a COLR layer shifted left by its
 # own xMin, so a left-side gap would open a seam after every token start.
 # The whole inter-token gap therefore sits on the right of the end box.
-ADV, TOP, BOTTOM, RADIUS, GAP, OVERLAP = 600, 800, -240, 90, 60, 10
+# Boxes that continue into the next glyph overlap it by OVERLAP units. Chrome
+# snaps color-glyph bitmaps to whole pixels, so the overlap must exceed one
+# device pixel at the smallest useful size (120 units = 1.4 px at 12 px) or
+# the previous box's anti-aliased edge column shows through as a seam. The
+# overlapped area always lies under the next glyph's own box.
+ADV, TOP, BOTTOM, RADIUS, GAP, OVERLAP = 600, 800, -240, 90, 60, 120
 
 
 def draw_box(pen, left_round: bool, right_round: bool):

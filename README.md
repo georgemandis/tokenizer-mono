@@ -54,10 +54,16 @@ and recall against the real tokenizer, plus shaping speed.
 
 Rendering notes learned the hard way:
 
-- Translucent boxes show seams where neighbours overlap: use opaque colors
-  and let continuing boxes overlap the next glyph by a few units.
+- Translucent boxes show seams where neighbours overlap, so the colors are
+  opaque.
 - Chrome draws a COLR layer shifted left by its own xMin, so every box starts
   at x=0 and the inter-token gap sits entirely on the right of the end box.
+- Chrome snaps color-glyph bitmaps to whole pixels, so a continuing box must
+  overlap the next glyph by more than one device pixel at the smallest size
+  you care about (120 units here), or its anti-aliased edge column shows as
+  a seam. The overlap is always hidden under the next glyph's own box.
+- `tools/gallery.py` renders one line per variant; `tools/shot.py` renders
+  any built font. Both use Playwright's cached Chromium headlessly.
 
 ## Setup
 

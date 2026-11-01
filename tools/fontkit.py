@@ -242,13 +242,17 @@ def rename(font: TTFont, family: str, style: str, old_family: str, version: str 
 
 def export(font: TTFont, out_dir: Path, stem: str) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = []
-    for flavor, ext in ((None, "ttf"), ("woff", "woff"), ("woff2", "woff2")):
-        font.flavor = flavor
-        p = out_dir / f"{stem}.{ext}"
-        font.save(p)
+    ttf = out_dir / f"{stem}.ttf"
+    font.save(ttf)
+    paths = [ttf]
+    # Re-open the compiled TTF so the web flavors are written from the already
+    # compiled table data instead of recompiling a multi-megabyte GSUB twice.
+    compiled = TTFont(ttf, lazy=True)
+    for flavor in ("woff", "woff2"):
+        compiled.flavor = flavor
+        p = out_dir / f"{stem}.{flavor}"
+        compiled.save(p)
         paths.append(p)
-    font.flavor = None
     return paths
 
 
