@@ -20,3 +20,6 @@ test: smoke
 
 clean:
 	rm -rf build
+
+shot: smoke
+	$(PY) tools/shot.py build/smoke/SmokeMono-Regular.woff2 build/smoke/shot.png "fire fired misfire fire." "Fire! campfire, fire, FIRE"
