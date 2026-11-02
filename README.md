@@ -62,6 +62,8 @@ Rendering notes learned the hard way:
   overlap the next glyph by more than one device pixel at the smallest size
   you care about (120 units here), or its anti-aliased edge column shows as
   a seam. The overlap is always hidden under the next glyph's own box.
+- Verified in Chromium (headless, pixel-checked) and Safari (by eye).
+  Firefox not yet checked.
 - `tools/gallery.py` renders one line per variant; `tools/shot.py` renders
   any built font. Both use Playwright's cached Chromium headlessly.
 
