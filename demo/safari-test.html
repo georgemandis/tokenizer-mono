@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whitespace shaping test</title>
+<style>
+  @font-face { font-family: "Tokenizer Mono cl100k"; src: url("../build/tokenizer/TokenizerMonocl100k-Regular.woff2") format("woff2"); }
+  body { font-family: system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #fff; }
+  p { color: #666; font-size: .9rem; }
+  .row { display: grid; grid-template-columns: 16rem 1fr; gap: 1rem; align-items: center; margin: .6rem 0; }
+  .lbl { font-size: .8rem; color: #666; }
+  .s { font-family: "Tokenizer Mono cl100k", monospace; font-size: 24px; line-height: 1.5; white-space: pre-wrap; margin: 0; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; background: #fff; color: #1a1a1a; }
+  textarea.s { width: 100%; box-sizing: border-box; height: 2.6em; resize: none; }
+</style>
+<h1>Whitespace shaping test</h1>
+<p>Correct rendering: the space before "quick" shares a color with "quick", and the four spaces before "return" show as one three-space token followed by " return" in another color. Rows where every space has its own color mean the browser shaped each space separately.</p>
+
+<div class="row"><span class="lbl">1. div, pre-wrap (default)</span><div class="s">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">2. div, white-space: pre</span><div class="s" style="white-space:pre">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">3. div, text-rendering: optimizeLegibility</span><div class="s" style="text-rendering:optimizeLegibility">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">4. div, font-kerning: normal</span><div class="s" style="font-kerning:normal">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">5. div, font-variant-ligatures: contextual</span><div class="s" style="font-variant-ligatures:contextual">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">6. div, font-feature-settings: "calt"</span><div class="s" style="font-feature-settings:'calt' 1">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">7. div, all of 2 to 6 combined</span><div class="s" style="white-space:pre;text-rendering:optimizeLegibility;font-kerning:normal;font-variant-ligatures:contextual;font-feature-settings:'calt' 1">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">8. div, letter-spacing: 0.01px</span><div class="s" style="letter-spacing:0.01px">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">9. div, word-spacing: 0.01px</span><div class="s" style="word-spacing:0.01px">The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">10. div, contenteditable</span><div class="s" contenteditable>The quick fox.    return x</div></div>
+<div class="row"><span class="lbl">11. textarea (default)</span><textarea class="s">The quick fox.    return x</textarea></div>
+<div class="row"><span class="lbl">12. textarea, optimizeLegibility + kerning</span><textarea class="s" style="text-rendering:optimizeLegibility;font-kerning:normal">The quick fox.    return x</textarea></div>
+<div class="row"><span class="lbl">13. non-breaking spaces (U+00A0)</span><div class="s">The&nbsp;quick&nbsp;fox.&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;x</div></div>
+<div class="row"><span class="lbl">14. SVG text</span><svg width="600" height="40"><text x="4" y="28" style="font-family:'Tokenizer Mono cl100k';font-size:24px;white-space:pre" xml:space="preserve">The quick fox.    return x</text></svg></div>
+<div class="row"><span class="lbl">15. canvas</span><canvas id="c" width="600" height="40"></canvas></div>
+<script>
+document.fonts.load('24px "Tokenizer Mono cl100k"').then(() => {
+  const ctx = document.getElementById('c').getContext('2d');
+  ctx.font = '24px "Tokenizer Mono cl100k"'; ctx.fillStyle = '#1a1a1a';
+  ctx.fillText('The quick fox.    return x', 4, 28);
+});
+</script>
