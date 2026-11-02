@@ -26,12 +26,12 @@ legacy family name (ID 1) and the file name carry the variant.
 | p50k     | p50k_base                               | OpenAI Codex, text-davinci-002/003 |
 | r50k     | r50k_base                               | OpenAI GPT-2, GPT-3 |
 | llama4   | unsloth/Llama-4-Scout-17B-16E-Instruct  | Meta Llama 4 |
-| llama3   | NousResearch/Meta-Llama-3-8B            | Meta Llama 3 / 3.1 / 3.2 / 3.3 |
+| llama3   | NousResearch/Meta-Llama-3-8B            | Meta Llama 3 / 3.1 / 3.2 / 3.3; also SmolLM 3, IBM Granite 4 |
 | llama2   | NousResearch/Llama-2-7b-hf              | Meta Llama 2 (SentencePiece) |
 | gemma3   | unsloth/gemma-3-4b-it                   | Google Gemma 3 |
 | gemma    | unsloth/gemma-2-2b                      | Google Gemma 1 / 2 |
 | mistral  | unsloth/mistral-7b-v0.3                 | Mistral 7B v0.3 (SentencePiece) |
-| tekken   | unsloth/Mistral-Nemo-Base-2407          | Mistral Nemo, Mistral Small 3 (Tekken) |
+| tekken   | unsloth/Mistral-Nemo-Base-2407          | Mistral Nemo, Mistral Small 3 (Tekken); also NVIDIA Nemotron-H, Swiss AI Apertus |
 | qwen     | Qwen/Qwen2.5-7B                         | Alibaba Qwen 2 / 2.5 / 3 |
 | deepseek | deepseek-ai/DeepSeek-V3                 | DeepSeek V3 / R1 |
 | glm      | zai-org/GLM-4.5                         | Zhipu GLM-4.5 |
@@ -40,12 +40,23 @@ legacy family name (ID 1) and the file name carry the variant.
 | bloom    | bigscience/bloom                        | BigScience BLOOM (multilingual) |
 | t5       | google-t5/t5-base                       | Google T5 (SentencePiece Unigram, not BPE) |
 | bert     | bert-base-cased                         | Google BERT (WordPiece; ## continuations approximated) |
+| superbpe | UW/OLMo2-8B-SuperBPE-t180k              | UW SuperBPE for OLMo 2 (tokens cross word boundaries) |
+| granite  | ibm-granite/granite-3.3-8b-instruct     | IBM Granite 3 (StarCoder vocabulary); also StarCoder / StarCoder2 |
+| falcon3  | tiiuae/Falcon3-7B-Base                  | TII Falcon 3 |
+| hunyuan  | tencent/Hunyuan-7B-Instruct             | Tencent Hunyuan |
+| ernie    | baidu/ERNIE-4.5-21B-A3B-PT              | Baidu ERNIE 4.5 (SentencePiece) |
+| seed     | ByteDance-Seed/Seed-OSS-36B-Instruct    | ByteDance Seed-OSS |
+| yi       | 01-ai/Yi-1.5-9B                         | 01.AI Yi (SentencePiece) |
+| clip     | openai/clip-vit-base-patch32            | OpenAI CLIP, Stable Diffusion prompts (lowercases; no whitespace tokens) |
 
-![The same sentence in all nineteen faces](docs/gallery.png)
+![The same sentence in all 27 faces](docs/gallery.png)
 
-Phi-4 and OLMo 2 use cl100k's vocabulary, gpt-oss uses o200k's, Qwen 3 uses
-Qwen 2.5's, so those faces double up. Kimi K2 and Cohere don't publish a
-downloadable `tokenizer.json`. Anthropic's tokenizer is not public, so there is no Claude face.
+Many models share a vocabulary, so one face covers several: Phi-4 and OLMo 2
+use cl100k, gpt-oss uses o200k, Qwen 3 uses Qwen 2.5's, SmolLM 3 and Granite 4
+use Llama 3's, Nemotron-H and Apertus use Tekken, CodeLlama and Phi-3 use
+Llama 2's, Pythia uses NeoX's, StarCoder uses Granite 3's. Kimi K2 and Grok
+don't publish a `tokenizer.json`; Cohere and AI21 gate theirs behind a terms
+page. Anthropic's tokenizer is not public, so there is no Claude face.
 
 How it works, all inside the `calt` feature:
 
@@ -71,6 +82,24 @@ greedy would split differently, so they cost nothing where greedy is already
 right. On the mixed corpus this took cl100k from 94.7% to 97.4% boundary
 precision. What's left is rare words outside the list and code identifiers.
 
+Two kinds of tokenizer need extra handling:
+
+- **No whitespace tokens** (BERT's WordPiece, CLIP): spaces are never
+  tokens, so they stay unboxed and words start at their first letter. A word's
+  letters also occur as continuation pieces inside longer words ("ont" in
+  "Font", which BERT splits differently from the standalone word), so the
+  whole-word rules for these faces are built as class-based (format 2)
+  chained rules whose backtrack requires "not a letter or digit" before the
+  word. Line-initial words have no backtrack and fall back to the vocabulary
+  rules.
+- **Lowercasing** (CLIP): the vocabulary is all lower case and marks word
+  ends with a suffix (`hello</w>`). The suffix is stripped and every rule is
+  emitted three times, for the lower, Capitalized and ALL-CAPS spellings.
+
+SuperBPE is the odd one out in the other direction: its tokens cross word
+boundaries (" of the" is one token), which the vocabulary rules handle, but
+the whole-word rules only know single words, so its accuracy is lower.
+
 Every character Plex Mono has a glyph for is covered (1,001 characters: ASCII,
 Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
 “quoted” text tokenize like the real thing.
@@ -78,35 +107,45 @@ Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
 ### Accuracy
 
 Boundary agreement with the real tokenizer on the corpus described below,
-from the CI run of the current build (sorted by precision):
+from a local run of the current build, reproduced by CI on every push (sorted by precision):
 
 | face | precision | recall | tokens font / real | shaping | TTF |
 |---|---|---|---|---|---|
-| r50k | 98.6% | 98.7% | 3091 / 3088 | 67 µs/char | 8.6 MB |
-| bert | 98.6% | 96.7% | 2595 / 2645 | 1 µs/char | 2.5 MB |
-| gemma | 98.2% | 98.1% | 2262 / 2264 | 62 µs/char | 14.5 MB |
-| p50k | 98.1% | 98.3% | 2406 / 2403 | 44 µs/char | 8.6 MB |
-| neox | 98.1% | 97.8% | 2331 / 2338 | 61 µs/char | 8.8 MB |
-| gemma3 | 98.0% | 98.0% | 2273 / 2274 | 57 µs/char | 13.8 MB |
-| mistral | 97.6% | 98.0% | 2480 / 2470 | 69 µs/char | 8.6 MB |
-| llama2 | 97.6% | 97.3% | 2508 / 2514 | 68 µs/char | 8.8 MB |
-| qwen | 97.5% | 97.3% | 2178 / 2181 | 64 µs/char | 11.1 MB |
-| cl100k | 97.4% | 97.3% | 2150 / 2153 | 54 µs/char | 10.8 MB |
-| llama3 | 97.3% | 97.2% | 2152 / 2153 | 65 µs/char | 11.3 MB |
-| o200k | 97.2% | 97.3% | 2148 / 2146 | 72 µs/char | 13.1 MB |
-| glm | 97.1% | 96.4% | 2139 / 2156 | 69 µs/char | 11.7 MB |
-| deepseek | 96.8% | 96.9% | 2250 / 2247 | 61 µs/char | 9.9 MB |
-| falcon | 96.7% | 98.0% | 2524 / 2492 | 61 µs/char | 9.1 MB |
-| llama4 | 96.6% | 96.7% | 2158 / 2156 | 42 µs/char | 13.6 MB |
-| tekken | 96.5% | 96.5% | 2282 / 2281 | 69 µs/char | 11.2 MB |
-| bloom | 93.2% | 93.8% | 2236 / 2221 | 76 µs/char | 12.9 MB |
-| t5 | 83.0% | 92.7% | 2854 / 2556 | 28 µs/char | 7.1 MB |
+| bert | 99.4% | 99.1% | 2638 / 2645 | 7 µs/char | 4.9 MB |
+| r50k | 98.6% | 98.7% | 3091 / 3088 | 65 µs/char | 8.6 MB |
+| yi | 98.5% | 98.5% | 2493 / 2493 | 40 µs/char | 8.6 MB |
+| gemma | 98.2% | 98.1% | 2262 / 2264 | 46 µs/char | 14.5 MB |
+| p50k | 98.1% | 98.3% | 2406 / 2403 | 40 µs/char | 8.6 MB |
+| neox | 98.1% | 97.8% | 2331 / 2338 | 40 µs/char | 8.8 MB |
+| gemma3 | 98.0% | 98.0% | 2273 / 2274 | 53 µs/char | 13.8 MB |
+| granite | 97.8% | 97.8% | 2367 / 2368 | 50 µs/char | 9.7 MB |
+| mistral | 97.6% | 98.0% | 2480 / 2470 | 46 µs/char | 8.6 MB |
+| ernie | 97.6% | 97.6% | 2330 / 2328 | 42 µs/char | 9.8 MB |
+| llama2 | 97.6% | 97.3% | 2508 / 2514 | 57 µs/char | 8.8 MB |
+| qwen | 97.5% | 97.3% | 2178 / 2181 | 43 µs/char | 11.1 MB |
+| cl100k | 97.4% | 97.3% | 2150 / 2153 | 41 µs/char | 10.8 MB |
+| hunyuan | 97.4% | 96.0% | 2151 / 2182 | 41 µs/char | 10.8 MB |
+| llama3 | 97.3% | 97.2% | 2152 / 2153 | 52 µs/char | 11.3 MB |
+| o200k | 97.2% | 97.3% | 2148 / 2146 | 48 µs/char | 13.1 MB |
+| glm | 97.1% | 96.4% | 2139 / 2156 | 59 µs/char | 11.7 MB |
+| deepseek | 96.8% | 96.9% | 2250 / 2247 | 43 µs/char | 9.9 MB |
+| falcon3 | 96.7% | 98.2% | 2408 / 2371 | 38 µs/char | 11.4 MB |
+| falcon | 96.7% | 98.0% | 2524 / 2492 | 40 µs/char | 9.1 MB |
+| llama4 | 96.6% | 96.7% | 2158 / 2156 | 51 µs/char | 13.6 MB |
+| seed | 96.5% | 96.9% | 2240 / 2232 | 44 µs/char | 10.5 MB |
+| tekken | 96.5% | 96.5% | 2282 / 2281 | 48 µs/char | 11.2 MB |
+| clip | 95.8% | 96.0% | 2308 / 2302 | 5 µs/char | 9.0 MB |
+| bloom | 93.2% | 93.8% | 2236 / 2221 | 55 µs/char | 12.9 MB |
+| superbpe | 85.7% | 87.7% | 1929 / 1886 | 29 µs/char | 14.3 MB |
+| t5 | 83.0% | 92.7% | 2854 / 2556 | 32 µs/char | 7.1 MB |
 
-The two odd ones are explained by their algorithms: BLOOM is multilingual and
-its English/code vocabulary collides with tokens from other languages; T5 is
-a Unigram model that picks splits by likelihood, which no longest-match
-scheme can reproduce. BERT is WordPiece, which really is greedy
-longest-match, so it needs no word rules at all.
+The outliers are explained by their algorithms: T5 is a Unigram model that
+picks splits by likelihood, which no longest-match scheme can reproduce;
+SuperBPE's tokens span several words, which the single-word rules can't
+learn; BLOOM is multilingual and its English/code vocabulary collides with
+tokens from other languages. BERT is WordPiece, which really is greedy
+longest-match from each word start, so with word-start rules scoped by the
+backtrack class it is the most accurate face.
 
 ### How accuracy is measured
 

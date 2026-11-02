@@ -23,7 +23,10 @@ class _Base:
         """Token starts within ctx[a:b] (relative to a) when the real tokenizer
         sees the whole of ctx. None if a or b is not itself a boundary."""
         bd = self.boundaries(ctx)
-        if a not in bd or (b < len(ctx) and b not in bd):
+        # Tokenizers without whitespace tokens (WordPiece, CLIP) put the next
+        # boundary on the letter after the space, so a span may end on a space.
+        end_ok = b >= len(ctx) or b in bd or (getattr(self, "nospace", False) and ctx[b] == " " and b + 1 in bd)
+        if a not in bd or not end_ok:
             return None
         return [x - a for x in sorted(bd) if a <= x < b]
 
@@ -80,6 +83,13 @@ class HF(_Base):
         # WordPiece (BERT): "##xyz" is a continuation, anything else starts a
         # word. We approximate word-start tokens as space-prefixed ones.
         self.wordpiece = cfg["model"]["type"] == "WordPiece"
+        # CLIP-style BPE marks word ends with a suffix ("hello</w>") and
+        # lowercases its input; its pre-tokenizer discards whitespace.
+        self.suffix = cfg["model"].get("end_of_word_suffix") or ""
+        self.lowercase = '"Lowercase"' in json.dumps(cfg.get("normalizer") or {})
+        # Tokenizers that never tokenize whitespace (WordPiece, CLIP): spaces
+        # stay unboxed and words start at their first letter.
+        self.nospace = self.wordpiece or bool(self.suffix)
         added = self.tok.get_added_tokens_decoder().values()
         self.plain_added = {a.content for a in added if not a.special}
         self.u2b = _bytes_to_unicode()
@@ -89,6 +99,8 @@ class HF(_Base):
             return s.replace("\u2581", " ")  # added tokens are literal text
         if self.wordpiece:
             return s[2:] if s.startswith("##") else s
+        if self.suffix and s.endswith(self.suffix):
+            s = s[:-len(self.suffix)]
         if self.metaspace:
             return s.replace("\u2581", " ")
         try:
@@ -120,7 +132,7 @@ class HF(_Base):
         token consumed as its prefix marker. We snap such a start back onto
         that space, which is where the font draws the token start."""
         enc = self.tok.encode(text, add_special_tokens=False)
-        if not self.wordpiece:
+        if not self.nospace:
             # Offsets are unreliable for whitespace: byte-level trim_offsets
             # gives empty spans for space-only tokens and Metaspace models
             # report odd spans around a lone U+2581. Prefer the tokens' own
@@ -142,7 +154,7 @@ class HF(_Base):
             covered.update(range(a, b))
         out = set()
         for a, _ in spans:
-            if not self.wordpiece and a > 0 and text[a - 1] == " " and (a - 1) not in covered:
+            if not self.nospace and a > 0 and text[a - 1] == " " and (a - 1) not in covered:
                 a -= 1
             out.add(a)
         return out

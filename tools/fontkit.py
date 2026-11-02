@@ -272,7 +272,8 @@ def export(font: TTFont, out_dir: Path, stem: str) -> list[Path]:
 
 # ---- hand-built chained contextual lookups ----------------------------------
 
-def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000) -> otTables.Lookup:
+def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
+                               backtrack_classes: dict[str, int] | None = None) -> otTables.Lookup:
     """Build a GSUB type 6 (chained contextual) lookup using format 1 (glyph
     based rule sets), split across as many Extension-wrapped subtables as the
     16-bit offset limits require.
@@ -282,12 +283,23 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000) -> otTa
     priority order. Rules are keyed on their first input glyph; for a given
     first glyph, order is preserved across subtables, so "longest first" works.
     Backtrack is given in logical order (closest glyph last).
+
+    With backtrack_classes (glyph -> class, unlisted glyphs are class 0) the
+    lookup is built as format 2 instead: input and lookahead use one class per
+    glyph, so rules read the same, but a rule's backtrack is a list of class
+    numbers, which lets a rule say "preceded by anything that is not a letter".
     """
     gid = font.getReverseGlyphMap()
     by_first: dict[str, list] = {}
     for r in rules:
         bt, inp, la, recs = r if len(r) == 4 else ([], r[0], [], r[1])
         by_first.setdefault(inp[0], []).append((bt, inp, la, recs))
+    if backtrack_classes is not None:
+        budget = min(budget, 48000)  # leave room for the class tables + set offsets
+        seen = sorted({g for rl in by_first.values() for _, inp, la, _ in rl for g in list(inp) + list(la)}, key=gid.get)
+        cls = {g: i + 1 for i, g in enumerate(seen)}
+        in_def = otTables.ClassDef(); in_def.classDefs = dict(cls)
+        bt_def = otTables.ClassDef(); bt_def.classDefs = dict(backtrack_classes)
 
     def rule_size(rule):
         bt, inp, la, recs = rule
@@ -323,31 +335,49 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000) -> otTa
     lookup.LookupType = 7
     lookup.LookupFlag = 0
     lookup.SubTable = []
+    def make_rule(bt, inp, la, recs, fmt2):
+        r = otTables.ChainSubClassRule() if fmt2 else otTables.ChainSubRule()
+        if fmt2:
+            r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt)), len(bt)
+            r.Input, r.InputGlyphCount = [cls[g] for g in inp[1:]], len(inp)
+            r.LookAhead, r.LookAheadGlyphCount = [cls[g] for g in la], len(la)
+        else:
+            r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt)), len(bt)
+            r.Input, r.InputGlyphCount = list(inp[1:]), len(inp)
+            r.LookAhead, r.LookAheadGlyphCount = list(la), len(la)
+        r.SubstLookupRecord = []
+        for seq, li in recs:
+            rec = otTables.SubstLookupRecord()
+            rec.SequenceIndex, rec.LookupListIndex = seq, li
+            r.SubstLookupRecord.append(rec)
+        r.SubstCount = len(r.SubstLookupRecord)
+        return r
+
     for chunk in subtables:
         chunk = sorted(chunk, key=lambda c: gid[c[0]])
         st = otTables.ChainContextSubst()
-        st.Format = 1
         st.Coverage = otTables.Coverage()
         st.Coverage.glyphs = [c[0] for c in chunk]
-        st.ChainSubRuleSet = []
-        for first, rl in chunk:
-            rs = otTables.ChainSubRuleSet()
-            rs.ChainSubRule = []
-            for bt, inp, la, recs in rl:
-                r = otTables.ChainSubRule()
-                r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt)), len(bt)
-                r.Input, r.InputGlyphCount = list(inp[1:]), len(inp)
-                r.LookAhead, r.LookAheadGlyphCount = list(la), len(la)
-                r.SubstLookupRecord = []
-                for seq, li in recs:
-                    rec = otTables.SubstLookupRecord()
-                    rec.SequenceIndex, rec.LookupListIndex = seq, li
-                    r.SubstLookupRecord.append(rec)
-                r.SubstCount = len(r.SubstLookupRecord)
-                rs.ChainSubRule.append(r)
-            rs.ChainSubRuleCount = len(rs.ChainSubRule)
-            st.ChainSubRuleSet.append(rs)
-        st.ChainSubRuleSetCount = len(st.ChainSubRuleSet)
+        if backtrack_classes is None:
+            st.Format = 1
+            st.ChainSubRuleSet = []
+            for first, rl in chunk:
+                rs = otTables.ChainSubRuleSet()
+                rs.ChainSubRule = [make_rule(*rule, False) for rule in rl]
+                rs.ChainSubRuleCount = len(rs.ChainSubRule)
+                st.ChainSubRuleSet.append(rs)
+            st.ChainSubRuleSetCount = len(st.ChainSubRuleSet)
+        else:
+            st.Format = 2
+            st.BacktrackClassDef, st.InputClassDef, st.LookAheadClassDef = bt_def, in_def, in_def
+            sets = [None] * (len(cls) + 1)
+            for first, rl in chunk:
+                rs = otTables.ChainSubClassSet()
+                rs.ChainSubClassRule = [make_rule(*rule, True) for rule in rl]
+                rs.ChainSubClassRuleCount = len(rs.ChainSubClassRule)
+                sets[cls[first]] = rs
+            st.ChainSubClassSet = sets
+            st.ChainSubClassSetCount = len(sets)
         ext = otTables.ExtensionSubst()
         ext.Format = 1
         ext.ExtensionLookupType = 6

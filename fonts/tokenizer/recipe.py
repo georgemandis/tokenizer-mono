@@ -38,12 +38,12 @@ VARIANTS = {
     "p50k":     ("tiktoken:p50k_base",              "Tokenizer Mono p50k",     "OpenAI Codex, text-davinci-002/003"),
     "r50k":     ("tiktoken:r50k_base",              "Tokenizer Mono r50k",     "OpenAI GPT-2, GPT-3"),
     "llama4":   ("hf:unsloth/Llama-4-Scout-17B-16E-Instruct", "Tokenizer Mono Llama4", "Meta Llama 4"),
-    "llama3":   ("hf:NousResearch/Meta-Llama-3-8B", "Tokenizer Mono Llama3",   "Meta Llama 3 / 3.1 / 3.2 / 3.3"),
+    "llama3":   ("hf:NousResearch/Meta-Llama-3-8B", "Tokenizer Mono Llama3",   "Meta Llama 3 / 3.1 / 3.2 / 3.3; also SmolLM 3, IBM Granite 4"),
     "llama2":   ("hf:NousResearch/Llama-2-7b-hf",   "Tokenizer Mono Llama2",   "Meta Llama 2 (SentencePiece)"),
     "gemma3":   ("hf:unsloth/gemma-3-4b-it",        "Tokenizer Mono Gemma3",   "Google Gemma 3"),
     "gemma":    ("hf:unsloth/gemma-2-2b",           "Tokenizer Mono Gemma",    "Google Gemma 1 / 2"),
     "mistral":  ("hf:unsloth/mistral-7b-v0.3",      "Tokenizer Mono Mistral",  "Mistral 7B v0.3 (SentencePiece)"),
-    "tekken":   ("hf:unsloth/Mistral-Nemo-Base-2407", "Tokenizer Mono Tekken", "Mistral Nemo, Mistral Small 3 (Tekken)"),
+    "tekken":   ("hf:unsloth/Mistral-Nemo-Base-2407", "Tokenizer Mono Tekken", "Mistral Nemo, Mistral Small 3 (Tekken); also NVIDIA Nemotron-H, Swiss AI Apertus"),
     "qwen":     ("hf:Qwen/Qwen2.5-7B",              "Tokenizer Mono Qwen",     "Alibaba Qwen 2 / 2.5 / 3"),
     "deepseek": ("hf:deepseek-ai/DeepSeek-V3",      "Tokenizer Mono DeepSeek", "DeepSeek V3 / R1"),
     "glm":      ("hf:zai-org/GLM-4.5",              "Tokenizer Mono GLM",      "Zhipu GLM-4.5"),
@@ -52,6 +52,14 @@ VARIANTS = {
     "bloom":    ("hf:bigscience/bloom",             "Tokenizer Mono BLOOM",    "BigScience BLOOM (multilingual)"),
     "t5":       ("hf:google-t5/t5-base",            "Tokenizer Mono T5",       "Google T5 (SentencePiece Unigram, not BPE)"),
     "bert":     ("hf:bert-base-cased",              "Tokenizer Mono BERT",     "Google BERT (WordPiece; ## continuations approximated)"),
+    "superbpe": ("hf:UW/OLMo2-8B-SuperBPE-t180k",   "Tokenizer Mono SuperBPE", "UW SuperBPE for OLMo 2 (tokens cross word boundaries)"),
+    "granite":  ("hf:ibm-granite/granite-3.3-8b-instruct", "Tokenizer Mono Granite", "IBM Granite 3 (StarCoder vocabulary); also StarCoder / StarCoder2"),
+    "falcon3":  ("hf:tiiuae/Falcon3-7B-Base",       "Tokenizer Mono Falcon3",  "TII Falcon 3"),
+    "hunyuan":  ("hf:tencent/Hunyuan-7B-Instruct",  "Tokenizer Mono Hunyuan",  "Tencent Hunyuan"),
+    "ernie":    ("hf:baidu/ERNIE-4.5-21B-A3B-PT",   "Tokenizer Mono ERNIE",    "Baidu ERNIE 4.5 (SentencePiece)"),
+    "seed":     ("hf:ByteDance-Seed/Seed-OSS-36B-Instruct", "Tokenizer Mono Seed", "ByteDance Seed-OSS"),
+    "yi":       ("hf:01-ai/Yi-1.5-9B",              "Tokenizer Mono Yi",       "01.AI Yi (SentencePiece)"),
+    "clip":     ("hf:openai/clip-vit-base-patch32", "Tokenizer Mono CLIP",     "OpenAI CLIP, Stable Diffusion prompts (lowercases; no whitespace tokens)"),
 }
 VARIANT = "cl100k"
 FAMILY = VARIANTS[VARIANT][1]
@@ -151,8 +159,8 @@ def word_rules(v, vocab_set: set[str], chars: dict[str, str]):
     for i, w in enumerate(top_n_list("en", WORDS)):
         if not all(c in chars for c in w) or len(w) < 2:
             continue
-        if getattr(v, "wordpiece", False):
-            # WordPiece: whitespace is not a token, words start at the letter.
+        if getattr(v, "nospace", False):
+            # WordPiece/CLIP: whitespace is not a token, words start at the letter.
             forms = [(f, "foo " + f + " bar", 4) for f in (w, w.capitalize())]
             if i < UPPER and len(w) > 2:
                 forms.append((w.upper(), "foo " + w.upper() + " bar", 4))
@@ -171,9 +179,15 @@ def word_rules(v, vocab_set: set[str], chars: dict[str, str]):
                 continue
             candidates[form] = (real, real != greedy(form, vocab_set))
     emitted = {f for f, (_, needed) in candidates.items() if needed}
+    # Without whitespace tokens a word's letters also occur as continuation
+    # pieces inside longer words ("ont" in "Font"), where the word's own split
+    # must not apply. Those word rules therefore require a preceding glyph of
+    # backtrack class 0, "not a letter or digit" (see apply); only line-initial
+    # words fall back to the vocab rules.
+    backtrack = [0] if getattr(v, "nospace", False) else []
     for form, (real, needed) in candidates.items():
         if needed or any(form[:n] in emitted for n in range(2, len(form))):
-            yield form, real
+            yield form, real, backtrack
 
 
 def apply(font, kit):
@@ -212,8 +226,8 @@ def apply(font, kit):
     for sh in "sme":
         fea.append(f"lookup to{sh.upper()} {{ sub @PLAIN by @{sh.upper()}; }} to{sh.upper()};")
     fea.append("lookup TOK { sub box.s by box.x; } TOK;")  # placeholder, index 3
-    if getattr(v, "wordpiece", False):
-        # WordPiece never tokenizes whitespace: leave lone spaces unboxed.
+    if getattr(v, "nospace", False):
+        # WordPiece and CLIP never tokenize whitespace: leave lone spaces unboxed.
         fea.append("lookup XFILL { sub [" + " ".join(n for n in names if n != chars[" "]) + "] by ["
                    + " ".join(f"{n}.x" for n in names if n != chars[" "]) + "]; } XFILL;")
     else:
@@ -237,6 +251,10 @@ def apply(font, kit):
 
     # --- the tokenizer lookup, built by hand (format 1, many subtables)
     all_toks = v.tokens()
+    if getattr(v, "lowercase", False):
+        # CLIP lowercases its input before tokenizing, so each rule must also
+        # match the Capitalized and ALL-CAPS spellings of the token.
+        all_toks = sorted({f for t in all_toks for f in (t, t.capitalize(), t.upper()) if len(f) == len(t)})
     toks = sorted({t for t in all_toks if 2 <= len(t) <= MAX_LEN and all(c in chars for c in t)})
     # Tokens that end in a space but aren't all spaces (BLOOM has ", ") never
     # win in the real tokenizer because its pre-tokenizer attaches the space
@@ -253,9 +271,9 @@ def apply(font, kit):
     # tokens, so synthesize space-run tokens (no lookahead) for it; otherwise
     # indented code renders as dozens of single-space tokens. WordPiece drops
     # whitespace entirely and is handled by leaving spaces unboxed instead.
-    wordpiece = getattr(v, "wordpiece", False)
+    nospace = getattr(v, "nospace", False)
     n_run = len(v.tok.encode("foo        bar", add_special_tokens=False).tokens) if hasattr(v, "tok") else 9
-    if "  " not in vocab_set and n_run <= 4 and not wordpiece:
+    if "  " not in vocab_set and n_run <= 4 and not nospace:
         toks += [" " * n for n in range(2, MAX_LEN + 1)]
         vocab_set |= {" " * n for n in range(2, MAX_LEN + 1)}
 
@@ -284,13 +302,25 @@ def apply(font, kit):
         else:
             rules.append(((-len(t), 1), (inp, recs)))
     nword = 0
-    for form, starts in word_rules(v, vocab_set, chars):
+    for form, starts, bt in word_rules(v, vocab_set, chars):
         inp = [chars[c] for c in form]
-        rules.append(((-len(form), 0), (inp, records(len(inp), starts))))
+        rules.append(((-len(form), 0), (bt, inp, [], records(len(inp), starts))))
         nword += 1
     rules.sort(key=lambda r: r[0])
     rules = [r for _, r in rules]
-    tok_lookup = build_chain_lookup_format1(font, rules)
+    # Letters and digits, including their start/mid/end variants: by the time
+    # a rule looks back, the previous letter has usually been substituted.
+    word_glyphs = None
+    if nospace:
+        word_glyphs = {}
+        for c, g in chars.items():
+            if c.isalnum():
+                word_glyphs[g] = 1
+                for sh in SHAPES:
+                    word_glyphs[f"{g}.{sh}"] = 1
+                    for k in range(NCOLORS):
+                        word_glyphs[f"{g}.{sh}{k}"] = 1
+    tok_lookup = build_chain_lookup_format1(font, rules, backtrack_classes=word_glyphs)
     print(f"tokenizer[{VARIANT}]: {len(toks)} vocab rules + {nword} word rules, "
           f"{len(names)} chars, {tok_lookup.SubTableCount} subtables, "
           f"space-attaches={space_attaches}")
