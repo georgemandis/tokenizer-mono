@@ -150,6 +150,13 @@ Rendering notes learned the hard way:
 
 ## Setup
 
+Needs Python 3.12+, `make`, `curl` and `unzip`. No logins: IBM Plex comes from
+public GitHub release assets and the tokenizer vocabularies from public
+Hugging Face repos. A fresh clone to a built face with its accuracy number
+is three commands and a few minutes:
+
+    make setup && make tokenizer V=r50k && make tokcheck V=r50k
+
     make setup          # venv + pip deps, downloads Plex into vendor/ (gitignored)
     make smoke          # build/smoke/SmokeMono-Regular.{ttf,woff,woff2}
     make test           # shape a sentence with HarfBuzz and print glyph names

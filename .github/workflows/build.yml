@@ -29,8 +29,6 @@ jobs:
           key: vendor-${{ hashFiles('scripts/fetch-plex.sh', 'fonts/tokenizer/recipe.py') }}
       - run: python -m venv .venv && .venv/bin/pip install -r requirements.txt
       - run: ./scripts/fetch-plex.sh
-        env:
-          GH_TOKEN: ${{ github.token }}
       - run: make smoke test
       - run: make tokenizer V=${{ matrix.variant }}
       - run: make tokcheck V=${{ matrix.variant }} | tee -a "$GITHUB_STEP_SUMMARY"
