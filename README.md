@@ -73,9 +73,30 @@ Every character Plex Mono has a glyph for is covered (1,001 characters: ASCII,
 Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
 “quoted” text tokenize like the real thing.
 
-`make tokcheck` shapes `fonts/tokenizer/corpus-large.txt` with HarfBuzz and
-reports boundary precision and recall against the real tokenizer, plus
-shaping speed and file size.
+### How accuracy is measured
+
+`make tokcheck` shapes every line of `fonts/tokenizer/corpus-large.txt` with
+HarfBuzz (the engine Chrome uses) and reads back which glyphs came out as
+start-of-token variants. That is the font's set of token boundaries, as
+character positions. The real tokenizer (tiktoken or Hugging Face
+`tokenizers`) is run on the same line for its boundaries, and the sets are
+compared:
+
+- **precision**: of the boundaries the font drew, the share the real
+  tokenizer agrees with (low when the font over-splits);
+- **recall**: of the real boundaries, the share the font drew (low when it
+  under-splits).
+
+Only boundaries are compared because that is all the font can be right or
+wrong about; it never knows token IDs. The corpus is about 200 lines of
+English prose (including the OFL license text), Python from the standard
+library, some JavaScript and SQL, and a few lines with curly quotes, accents
+and currency symbols. Nothing in it was used to build the fonts: the word
+rules come from a frequency list. Each line is tokenized on its own, which
+matches how browsers shape text. A different corpus would move the numbers
+by a point or two, and a multilingual vocabulary like BLOOM is judged here
+only on its English and code tokens. CI prints the table for every face on
+every push.
 
 Rendering notes learned the hard way:
 
