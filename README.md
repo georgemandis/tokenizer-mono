@@ -41,6 +41,8 @@ legacy family name (ID 1) and the file name carry the variant.
 | t5       | google-t5/t5-base                       | Google T5 (SentencePiece Unigram, not BPE) |
 | bert     | bert-base-cased                         | Google BERT (WordPiece; ## continuations approximated) |
 
+![The same sentence in all nineteen faces](docs/gallery.png)
+
 Phi-4 and OLMo 2 use cl100k's vocabulary, gpt-oss uses o200k's, Qwen 3 uses
 Qwen 2.5's, so those faces double up. Kimi K2 and Cohere don't publish a
 downloadable `tokenizer.json`. Anthropic's tokenizer is not public, so there is no Claude face.
@@ -72,6 +74,39 @@ precision. What's left is rare words outside the list and code identifiers.
 Every character Plex Mono has a glyph for is covered (1,001 characters: ASCII,
 Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
 “quoted” text tokenize like the real thing.
+
+### Accuracy
+
+Boundary agreement with the real tokenizer on the corpus described below,
+from the CI run of the current build (sorted by precision):
+
+| face | precision | recall | tokens font / real | shaping | TTF |
+|---|---|---|---|---|---|
+| r50k | 98.6% | 98.7% | 3091 / 3088 | 67 µs/char | 8.6 MB |
+| bert | 98.6% | 96.7% | 2595 / 2645 | 1 µs/char | 2.5 MB |
+| gemma | 98.2% | 98.1% | 2262 / 2264 | 62 µs/char | 14.5 MB |
+| p50k | 98.1% | 98.3% | 2406 / 2403 | 44 µs/char | 8.6 MB |
+| neox | 98.1% | 97.8% | 2331 / 2338 | 61 µs/char | 8.8 MB |
+| gemma3 | 98.0% | 98.0% | 2273 / 2274 | 57 µs/char | 13.8 MB |
+| mistral | 97.6% | 98.0% | 2480 / 2470 | 69 µs/char | 8.6 MB |
+| llama2 | 97.6% | 97.3% | 2508 / 2514 | 68 µs/char | 8.8 MB |
+| qwen | 97.5% | 97.3% | 2178 / 2181 | 64 µs/char | 11.1 MB |
+| cl100k | 97.4% | 97.3% | 2150 / 2153 | 54 µs/char | 10.8 MB |
+| llama3 | 97.3% | 97.2% | 2152 / 2153 | 65 µs/char | 11.3 MB |
+| o200k | 97.2% | 97.3% | 2148 / 2146 | 72 µs/char | 13.1 MB |
+| glm | 97.1% | 96.4% | 2139 / 2156 | 69 µs/char | 11.7 MB |
+| deepseek | 96.8% | 96.9% | 2250 / 2247 | 61 µs/char | 9.9 MB |
+| falcon | 96.7% | 98.0% | 2524 / 2492 | 61 µs/char | 9.1 MB |
+| llama4 | 96.6% | 96.7% | 2158 / 2156 | 42 µs/char | 13.6 MB |
+| tekken | 96.5% | 96.5% | 2282 / 2281 | 69 µs/char | 11.2 MB |
+| bloom | 93.2% | 93.8% | 2236 / 2221 | 76 µs/char | 12.9 MB |
+| t5 | 83.0% | 92.7% | 2854 / 2556 | 28 µs/char | 7.1 MB |
+
+The two odd ones are explained by their algorithms: BLOOM is multilingual and
+its English/code vocabulary collides with tokens from other languages; T5 is
+a Unigram model that picks splits by likelihood, which no longest-match
+scheme can reproduce. BERT is WordPiece, which really is greedy
+longest-match, so it needs no word rules at all.
 
 ### How accuracy is measured
 
