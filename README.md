@@ -118,6 +118,16 @@ unit test for substitution rules.
 Outputs are TTF, WOFF, WOFF2. There is no CFF/OTF output: composite glyphs
 only exist in TrueType outlines, and TTF-in-.otf is just a rename.
 
+## CI and releases
+
+`.github/workflows/build.yml` builds every variant in parallel on each push
+to `main`, runs the fidelity check into the job summary, and uploads a
+`tokenizer-mono-fonts` artifact (fonts, manifest, demo page, in the repo's
+layout so `demo/tokenizer.html` works from the unzipped folder). Pushing a
+`v*` tag also creates a GitHub release with the zip attached:
+
+    git tag v0.1.0 && git push origin v0.1.0
+
 ## Naming
 
 IBM Plex is OFL-licensed with "Plex" as a Reserved Font Name, so derived fonts

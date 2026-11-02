@@ -1,0 +1,82 @@
+name: Build fonts
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  variants:
+    name: Build ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [cl100k, o200k, p50k, r50k, llama4, llama3, llama2, gemma3, gemma,
+                  mistral, tekken, qwen, deepseek, glm, neox, falcon, bloom, t5, bert]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Cache Plex and tokenizer downloads
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: vendor-${{ hashFiles('scripts/fetch-plex.sh', 'fonts/tokenizer/recipe.py') }}
+      - run: python -m venv .venv && .venv/bin/pip install -r requirements.txt
+      - run: ./scripts/fetch-plex.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: make smoke test
+      - run: make tokenizer V=${{ matrix.variant }}
+      - run: make tokcheck V=${{ matrix.variant }} | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: variant-${{ matrix.variant }}
+          path: build/tokenizer/
+          if-no-files-found: error
+
+  bundle:
+    name: Bundle and publish
+    needs: variants
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: variant-*
+          path: parts
+      - name: Merge variants into build/tokenizer
+        run: |
+          mkdir -p build/tokenizer
+          python3 - <<'PY'
+          import json, pathlib, shutil
+          out = pathlib.Path("build/tokenizer"); manifest = {}
+          for part in sorted(pathlib.Path("parts").glob("variant-*")):
+              for f in part.iterdir():
+                  if f.name == "manifest.json":
+                      manifest.update(json.loads(f.read_text()))
+                  else:
+                      shutil.copy(f, out / f.name)
+          (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+          print(f"{len(manifest)} variants")
+          PY
+      - name: Zip (fonts + demo page, same layout as the repo)
+        run: |
+          zip -qr tokenizer-mono-fonts.zip build/tokenizer demo README.md
+          ls -la tokenizer-mono-fonts.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tokenizer-mono-fonts
+          path: tokenizer-mono-fonts.zip
+      - name: Release (on v* tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" tokenizer-mono-fonts.zip --title "Tokenizer Mono ${GITHUB_REF_NAME}" --generate-notes
