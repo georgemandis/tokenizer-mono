@@ -142,24 +142,37 @@ def greedy(text: str, vocab_set: set[str]) -> list[int]:
 
 
 def word_rules(v, vocab_set: set[str], chars: dict[str, str]):
-    """Yield (form, token_starts) for common words where greedy is wrong."""
+    """Yield (form, token_starts) for common words where greedy is wrong, plus
+    any form that a shorter emitted form is a prefix of (" byte" must not
+    fire inside " bytes" when greedy already gets " bytes" right)."""
     from wordfreq import top_n_list
     seen = set()
+    candidates = {}  # form -> (real, needed)
     for i, w in enumerate(top_n_list("en", WORDS)):
         if not all(c in chars for c in w) or len(w) < 2:
             continue
-        forms = [(" " + w, "foo " + w + " bar", 3),
-                 (" " + w.capitalize(), "foo " + w.capitalize() + " bar", 3),
-                 (w, "\n" + w + " bar", 1)]
-        if i < UPPER and len(w) > 2:
-            forms.append((" " + w.upper(), "foo " + w.upper() + " bar", 3))
+        if getattr(v, "wordpiece", False):
+            # WordPiece: whitespace is not a token, words start at the letter.
+            forms = [(f, "foo " + f + " bar", 4) for f in (w, w.capitalize())]
+            if i < UPPER and len(w) > 2:
+                forms.append((w.upper(), "foo " + w.upper() + " bar", 4))
+        else:
+            forms = [(" " + w, "foo " + w + " bar", 3),
+                     (" " + w.capitalize(), "foo " + w.capitalize() + " bar", 3),
+                     (w, "\n" + w + " bar", 1)]
+            if i < UPPER and len(w) > 2:
+                forms.append((" " + w.upper(), "foo " + w.upper() + " bar", 3))
         for form, ctx, a in forms:
             if form in seen or len(form) > MAX_LEN:
                 continue
             seen.add(form)
             real = v.split(ctx, a, a + len(form))
-            if real is None or len(real) < 2 or real == greedy(form, vocab_set):
+            if real is None or len(real) < 2:
                 continue
+            candidates[form] = (real, real != greedy(form, vocab_set))
+    emitted = {f for f, (_, needed) in candidates.items() if needed}
+    for form, (real, needed) in candidates.items():
+        if needed or any(form[:n] in emitted for n in range(2, len(form))):
             yield form, real
 
 
@@ -187,6 +200,7 @@ def apply(font, kit):
     # --- feature code. Lookup indices follow definition order:
     #   0 toS, 1 toM, 2 toE, 3 TOK (placeholder, replaced below), 4 XFILL,
     #   5.. color singles (toS0..toX4 = 20 lookups), then FSM.
+    v = vocab.load(VARIANTS[VARIANT][0])
     fea = ["languagesystem DFLT dflt;", "languagesystem latn dflt;"]
     cls = lambda sh, k="": "[" + " ".join(f"{g}.{sh}{k}" for g in names) + "]"
     fea.append(f"@PLAIN = [{' '.join(names)}];")
@@ -198,7 +212,12 @@ def apply(font, kit):
     for sh in "sme":
         fea.append(f"lookup to{sh.upper()} {{ sub @PLAIN by @{sh.upper()}; }} to{sh.upper()};")
     fea.append("lookup TOK { sub box.s by box.x; } TOK;")  # placeholder, index 3
-    fea.append("lookup XFILL { sub @PLAIN by @X; } XFILL;")
+    if getattr(v, "wordpiece", False):
+        # WordPiece never tokenizes whitespace: leave lone spaces unboxed.
+        fea.append("lookup XFILL { sub [" + " ".join(n for n in names if n != chars[" "]) + "] by ["
+                   + " ".join(f"{n}.x" for n in names if n != chars[" "]) + "]; } XFILL;")
+    else:
+        fea.append("lookup XFILL { sub @PLAIN by @X; } XFILL;")
     for sh in SHAPES:
         for k in range(NCOLORS):
             fea.append(f"lookup to{sh.upper()}{k} {{ sub @{sh.upper()} by @{sh.upper()}{k}; }} to{sh.upper()}{k};")
@@ -217,11 +236,28 @@ def apply(font, kit):
     fea.append("feature calt { lookup TOK; lookup XFILL; lookup FSM; } calt;")
 
     # --- the tokenizer lookup, built by hand (format 1, many subtables)
-    v = vocab.load(VARIANTS[VARIANT][0])
     all_toks = v.tokens()
     toks = sorted({t for t in all_toks if 2 <= len(t) <= MAX_LEN and all(c in chars for c in t)})
+    # Tokens that end in a space but aren't all spaces (BLOOM has ", ") never
+    # win in the real tokenizer because its pre-tokenizer attaches the space
+    # to the following word; greedy would grab them. Drop them.
+    toks = [t for t in toks if not (t.endswith(" ") and t.strip(" "))]
     vocab_set = set(toks) | {t for t in all_toks if len(t) == 1}
     sp = chars[" "]
+    # How does this tokenizer treat a run of spaces before a word? tiktoken
+    # style keeps the last space for the word ("   " + " bar"); Gemma style
+    # keeps the whole run and the word gets no space ("    " + "bar").
+    probe = v.split("foo    bar", 3, 10) or []
+    space_attaches = 3 in probe  # starts are relative to the span
+    # T5 normalizes a run of spaces to a single token and has no multi-space
+    # tokens, so synthesize space-run tokens (no lookahead) for it; otherwise
+    # indented code renders as dozens of single-space tokens. WordPiece drops
+    # whitespace entirely and is handled by leaving spaces unboxed instead.
+    wordpiece = getattr(v, "wordpiece", False)
+    n_run = len(v.tok.encode("foo        bar", add_special_tokens=False).tokens) if hasattr(v, "tok") else 9
+    if "  " not in vocab_set and n_run <= 4 and not wordpiece:
+        toks += [" " * n for n in range(2, MAX_LEN + 1)]
+        vocab_set |= {" " * n for n in range(2, MAX_LEN + 1)}
 
     def records(n: int, starts: list[int]):
         """SubstLookupRecords for a match of n glyphs with token starts at
@@ -239,7 +275,7 @@ def apply(font, kit):
     for t in toks:
         inp = [chars[c] for c in t]
         recs = records(len(inp), [0])
-        if t.strip(" ") == "":
+        if t.strip(" ") == "" and space_attaches:
             # A run of spaces only tokenizes as a unit when another space
             # follows (tiktoken's whitespace rule); otherwise the last space
             # belongs to the next word. Trailing runs at end of line are the
@@ -256,6 +292,7 @@ def apply(font, kit):
     rules = [r for _, r in rules]
     tok_lookup = build_chain_lookup_format1(font, rules)
     print(f"tokenizer[{VARIANT}]: {len(toks)} vocab rules + {nword} word rules, "
-          f"{len(names)} chars, {tok_lookup.SubTableCount} subtables")
+          f"{len(names)} chars, {tok_lookup.SubTableCount} subtables, "
+          f"space-attaches={space_attaches}")
 
     kit.add_fea("\n".join(fea), overrides={3: tok_lookup})

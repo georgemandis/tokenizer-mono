@@ -80,11 +80,15 @@ class HF(_Base):
         # WordPiece (BERT): "##xyz" is a continuation, anything else starts a
         # word. We approximate word-start tokens as space-prefixed ones.
         self.wordpiece = cfg["model"]["type"] == "WordPiece"
+        added = self.tok.get_added_tokens_decoder().values()
+        self.plain_added = {a.content for a in added if not a.special}
         self.u2b = _bytes_to_unicode()
 
     def _to_text(self, s: str) -> str | None:
+        if s in self.plain_added:
+            return s.replace("\u2581", " ")  # added tokens are literal text
         if self.wordpiece:
-            return s[2:] if s.startswith("##") else " " + s
+            return s[2:] if s.startswith("##") else s
         if self.metaspace:
             return s.replace("\u2581", " ")
         try:
@@ -94,9 +98,16 @@ class HF(_Base):
 
     def tokens(self) -> list[str]:
         out = []
-        added = {a.content for a in self.tok.get_added_tokens_decoder().values()}
+        added = self.tok.get_added_tokens_decoder().values()
+        special = {a.content for a in added if a.special}
+        plain_added = {a.content for a in added if not a.special}
         for s in self.tok.get_vocab():
-            if s in added or BYTE_FALLBACK.match(s):
+            if s in special or BYTE_FALLBACK.match(s):
+                continue
+            if s in plain_added:
+                # Added (non-special) tokens are literal text, except that
+                # SentencePiece-style models (Gemma) write spaces as U+2581.
+                out.append(s.replace("\u2581", " "))
                 continue
             t = self._to_text(s)
             if t:
@@ -104,8 +115,37 @@ class HF(_Base):
         return out
 
     def boundaries(self, text: str) -> set[int]:
+        """Token starts. Some tokenizers (Metaspace/WordPiece pre-tokenizers,
+        ByteLevel with trim_offsets) report offsets that exclude the space a
+        token consumed as its prefix marker. We snap such a start back onto
+        that space, which is where the font draws the token start."""
         enc = self.tok.encode(text, add_special_tokens=False)
-        return {start for start, end in enc.offsets if end > start}
+        if not self.wordpiece:
+            # Offsets are unreliable for whitespace: byte-level trim_offsets
+            # gives empty spans for space-only tokens and Metaspace models
+            # report odd spans around a lone U+2581. Prefer the tokens' own
+            # text lengths when they reproduce the input (allowing for the
+            # SentencePiece dummy-prefix space).
+            texts = [self._to_text(t) for t in enc.tokens]
+            if all(t is not None for t in texts):
+                joined = "".join(texts)
+                shift = 0 if joined == text else (1 if joined == " " + text else None)
+                if shift is not None:
+                    pos, out = 0, set()
+                    for t in texts:
+                        out.add(max(0, pos - shift))
+                        pos += len(t)
+                    return out
+        spans = [(a, b) for a, b in enc.offsets if b > a]
+        covered = set()
+        for a, b in spans:
+            covered.update(range(a, b))
+        out = set()
+        for a, _ in spans:
+            if not self.wordpiece and a > 0 and text[a - 1] == " " and (a - 1) not in covered:
+                a -= 1
+            out.add(a)
+        return out
 
 
 def load(spec: str):

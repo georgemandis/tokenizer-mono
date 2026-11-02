@@ -27,7 +27,10 @@ def font_boundaries(font, text: str) -> set[int]:
     hb.shape(font, buf, {"calt": True})
     starts = set()
     for info in buf.glyph_infos:
-        m = SHAPE.search(font.get_glyph_name(info.codepoint))
+        name = font.get_glyph_name(info.codepoint)
+        if name == "space":
+            continue  # a plain space is "not a token" (WordPiece)
+        m = SHAPE.search(name)
         if not m or m.group(1) in "sx":
             starts.add(info.cluster)
     return starts
