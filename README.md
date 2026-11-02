@@ -1,4 +1,4 @@
-# font-idea
+# tokenizer-mono
 
 Absurd OpenType experiments built on top of IBM Plex. Two projects live here:
 
