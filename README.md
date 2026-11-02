@@ -14,22 +14,36 @@ word boundaries, using the same three mechanisms both real projects need
 
 ## Tokenizer Mono
 
-`fonts/tokenizer/recipe.py` builds one family per tokenizer vocabulary:
+`fonts/tokenizer/recipe.py` builds one face per tokenizer vocabulary. They
+share the typographic family name "Tokenizer Mono" (name IDs 16/17), so Font
+Book and most font pickers show one family with a style per tokenizer; the
+legacy family name (ID 1) and the file name carry the variant.
 
-| variant  | vocabulary                     | used by                              |
-|----------|--------------------------------|--------------------------------------|
-| cl100k   | tiktoken cl100k_base           | GPT-4, GPT-3.5, text-embedding-3     |
-| o200k    | tiktoken o200k_base            | GPT-4o, o1, o3, GPT-4.1              |
-| p50k     | tiktoken p50k_base             | Codex, text-davinci-002/003          |
-| r50k     | tiktoken r50k_base             | GPT-2, GPT-3                         |
-| llama3   | Meta-Llama-3-8B tokenizer.json | Llama 3.x                            |
-| llama2   | Llama-2-7b tokenizer.json      | Llama 2 (SentencePiece)              |
-| gemma    | gemma-2-2b tokenizer.json      | Gemma 1/2                            |
-| mistral  | mistral-7b-v0.3 tokenizer.json | Mistral 7B (SentencePiece)           |
-| qwen     | Qwen2.5-7B tokenizer.json      | Qwen 2 / 2.5                         |
-| deepseek | DeepSeek-V3 tokenizer.json     | DeepSeek V3 / R1                     |
+| variant  | vocabulary                              | used by |
+|----------|-----------------------------------------|---------|
+| cl100k   | cl100k_base                             | OpenAI GPT-4, GPT-3.5, text-embedding-3; also Phi-4, OLMo 2 |
+| o200k    | o200k_base                              | OpenAI GPT-4o, o1, o3, GPT-4.1, gpt-oss |
+| p50k     | p50k_base                               | OpenAI Codex, text-davinci-002/003 |
+| r50k     | r50k_base                               | OpenAI GPT-2, GPT-3 |
+| llama4   | unsloth/Llama-4-Scout-17B-16E-Instruct  | Meta Llama 4 |
+| llama3   | NousResearch/Meta-Llama-3-8B            | Meta Llama 3 / 3.1 / 3.2 / 3.3 |
+| llama2   | NousResearch/Llama-2-7b-hf              | Meta Llama 2 (SentencePiece) |
+| gemma3   | unsloth/gemma-3-4b-it                   | Google Gemma 3 |
+| gemma    | unsloth/gemma-2-2b                      | Google Gemma 1 / 2 |
+| mistral  | unsloth/mistral-7b-v0.3                 | Mistral 7B v0.3 (SentencePiece) |
+| tekken   | unsloth/Mistral-Nemo-Base-2407          | Mistral Nemo, Mistral Small 3 (Tekken) |
+| qwen     | Qwen/Qwen2.5-7B                         | Alibaba Qwen 2 / 2.5 / 3 |
+| deepseek | deepseek-ai/DeepSeek-V3                 | DeepSeek V3 / R1 |
+| glm      | zai-org/GLM-4.5                         | Zhipu GLM-4.5 |
+| neox     | EleutherAI/gpt-neox-20b                 | EleutherAI GPT-NeoX, Pythia |
+| falcon   | tiiuae/falcon-7b                        | TII Falcon |
+| bloom    | bigscience/bloom                        | BigScience BLOOM (multilingual) |
+| t5       | google-t5/t5-base                       | Google T5 (SentencePiece Unigram, not BPE) |
+| bert     | bert-base-cased                         | Google BERT (WordPiece; ## continuations approximated) |
 
-Anthropic's tokenizer is not public, so there is no Claude face.
+Phi-4 and OLMo 2 use cl100k's vocabulary, gpt-oss uses o200k's, Qwen 3 uses
+Qwen 2.5's, so those faces double up. Kimi K2 and Cohere don't publish a
+downloadable `tokenizer.json`. Anthropic's tokenizer is not public, so there is no Claude face.
 
 How it works, all inside the `calt` feature:
 
@@ -47,10 +61,21 @@ How it works, all inside the `calt` feature:
    box in palette slot *k* and the letter in the text color. Palette 0 is for
    light backgrounds, palette 1 for dark (`font-palette` in CSS).
 
-Greedy longest-match is not BPE, so the font disagrees with the real
-tokenizer now and then, mostly inside rare words. `make tokcheck` shapes
-`fonts/tokenizer/corpus.txt` with HarfBuzz and reports boundary precision
-and recall against the real tokenizer, plus shaping speed.
+Greedy longest-match is not BPE, so on top of the vocabulary rules the recipe
+adds **whole-word rules**: the top 60,000 English words (wordfreq) in the
+forms " word", " Word", line-initial "word" and, for the top 20,000, " WORD",
+each tokenized by the real tokenizer in context. A rule is only emitted where
+greedy would split differently, so they cost nothing where greedy is already
+right. On the mixed corpus this took cl100k from 94.7% to 97.4% boundary
+precision. What's left is rare words outside the list and code identifiers.
+
+Every character Plex Mono has a glyph for is covered (1,001 characters: ASCII,
+Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
+“quoted” text tokenize like the real thing.
+
+`make tokcheck` shapes `fonts/tokenizer/corpus-large.txt` with HarfBuzz and
+reports boundary precision and recall against the real tokenizer, plus
+shaping speed and file size.
 
 Rendering notes learned the hard way:
 

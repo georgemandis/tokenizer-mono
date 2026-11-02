@@ -30,4 +30,4 @@ tokenizer:
 	$(PY) tools/build.py fonts/tokenizer $(if $(V),--variant $(V))
 
 tokcheck:
-	$(PY) tools/tokcheck.py $(or $(V),all)
+	$(PY) tools/tokcheck.py $(or $(V),all) fonts/tokenizer/corpus-large.txt

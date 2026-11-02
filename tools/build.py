@@ -42,8 +42,8 @@ def main():
         kit = FontKit(font)
         recipe.apply(font, kit)
         kit.finalize()
-        rename(font, recipe.FAMILY, style, PLEX_FAMILY[recipe.BASE], getattr(recipe, "VERSION", "0.1"))
-        stem = f"{recipe.FAMILY.replace(' ', '')}-{style}"
+        stem = rename(font, recipe.FAMILY, style, PLEX_FAMILY[recipe.BASE], getattr(recipe, "VERSION", "0.1"),
+                      getattr(recipe, "TYPO_FAMILY", None), getattr(recipe, "TYPO_STYLE", None))
         paths = export(font, out_dir, stem)
         for p in paths:
             print(f"  {p.relative_to(ROOT)}  {p.stat().st_size / 1024:,.1f} KB")

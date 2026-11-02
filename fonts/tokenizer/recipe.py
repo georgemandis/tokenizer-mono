@@ -11,10 +11,17 @@ How it works, in three passes inside the `calt` feature:
          a continuation inherits its left neighbour's color, a new token gets
          the next color after the previous token's end.
 
-Only printable ASCII is covered, so a token can't span a line break or a
-non-ASCII character; both act as hard token boundaries.
+Every printable character Plex Mono has a glyph for is covered (ASCII plus
+Latin-1, Latin Extended-A, curly quotes, dashes...). A token still can't span
+a line break or an uncovered character; those act as hard boundaries.
+
+Greedy longest-match is not BPE, so on top of the vocabulary rules we add
+whole-word rules: the top WORDS English words (wordfreq), in the forms
+" word", " Word" and line-initial "word", tokenized by the real tokenizer in
+context. A rule is emitted only where greedy would get the split wrong.
 """
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
@@ -26,27 +33,42 @@ VERSION = "0.1"
 
 # name -> (vocab spec, family name, what uses it)
 VARIANTS = {
-    "cl100k":   ("tiktoken:cl100k_base",            "Tokenizer Mono cl100k",   "OpenAI GPT-4, GPT-3.5, text-embedding-3"),
-    "o200k":    ("tiktoken:o200k_base",             "Tokenizer Mono o200k",    "OpenAI GPT-4o, o1, o3, GPT-4.1"),
+    "cl100k":   ("tiktoken:cl100k_base",            "Tokenizer Mono cl100k",   "OpenAI GPT-4, GPT-3.5, text-embedding-3; also Phi-4, OLMo 2"),
+    "o200k":    ("tiktoken:o200k_base",             "Tokenizer Mono o200k",    "OpenAI GPT-4o, o1, o3, GPT-4.1, gpt-oss"),
     "p50k":     ("tiktoken:p50k_base",              "Tokenizer Mono p50k",     "OpenAI Codex, text-davinci-002/003"),
     "r50k":     ("tiktoken:r50k_base",              "Tokenizer Mono r50k",     "OpenAI GPT-2, GPT-3"),
-    "llama3":   ("hf:NousResearch/Meta-Llama-3-8B", "Tokenizer Mono Llama3",   "Meta Llama 3 / 3.1 / 3.2"),
+    "llama4":   ("hf:unsloth/Llama-4-Scout-17B-16E-Instruct", "Tokenizer Mono Llama4", "Meta Llama 4"),
+    "llama3":   ("hf:NousResearch/Meta-Llama-3-8B", "Tokenizer Mono Llama3",   "Meta Llama 3 / 3.1 / 3.2 / 3.3"),
     "llama2":   ("hf:NousResearch/Llama-2-7b-hf",   "Tokenizer Mono Llama2",   "Meta Llama 2 (SentencePiece)"),
-    "gemma":    ("hf:unsloth/gemma-2-2b",           "Tokenizer Mono Gemma",    "Google Gemma 1/2"),
+    "gemma3":   ("hf:unsloth/gemma-3-4b-it",        "Tokenizer Mono Gemma3",   "Google Gemma 3"),
+    "gemma":    ("hf:unsloth/gemma-2-2b",           "Tokenizer Mono Gemma",    "Google Gemma 1 / 2"),
     "mistral":  ("hf:unsloth/mistral-7b-v0.3",      "Tokenizer Mono Mistral",  "Mistral 7B v0.3 (SentencePiece)"),
-    "qwen":     ("hf:Qwen/Qwen2.5-7B",              "Tokenizer Mono Qwen",     "Alibaba Qwen 2 / 2.5"),
+    "tekken":   ("hf:unsloth/Mistral-Nemo-Base-2407", "Tokenizer Mono Tekken", "Mistral Nemo, Mistral Small 3 (Tekken)"),
+    "qwen":     ("hf:Qwen/Qwen2.5-7B",              "Tokenizer Mono Qwen",     "Alibaba Qwen 2 / 2.5 / 3"),
     "deepseek": ("hf:deepseek-ai/DeepSeek-V3",      "Tokenizer Mono DeepSeek", "DeepSeek V3 / R1"),
+    "glm":      ("hf:zai-org/GLM-4.5",              "Tokenizer Mono GLM",      "Zhipu GLM-4.5"),
+    "neox":     ("hf:EleutherAI/gpt-neox-20b",      "Tokenizer Mono NeoX",     "EleutherAI GPT-NeoX, Pythia"),
+    "falcon":   ("hf:tiiuae/falcon-7b",             "Tokenizer Mono Falcon",   "TII Falcon"),
+    "bloom":    ("hf:bigscience/bloom",             "Tokenizer Mono BLOOM",    "BigScience BLOOM (multilingual)"),
+    "t5":       ("hf:google-t5/t5-base",            "Tokenizer Mono T5",       "Google T5 (SentencePiece Unigram, not BPE)"),
+    "bert":     ("hf:bert-base-cased",              "Tokenizer Mono BERT",     "Google BERT (WordPiece; ## continuations approximated)"),
 }
 VARIANT = "cl100k"
 FAMILY = VARIANTS[VARIANT][1]
 
 
+TYPO_STYLE = VARIANT
+
+
 def configure(name: str):
-    global VARIANT, FAMILY
-    VARIANT, FAMILY = name, VARIANTS[name][1]
+    global VARIANT, FAMILY, TYPO_STYLE
+    VARIANT, FAMILY, TYPO_STYLE = name, VARIANTS[name][1], name
 
 
-MAX_LEN = 16
+MAX_LEN = 128     # longest token to emit a rule for (dash runs go to 128)
+WORDS = 60000     # wordfreq top-N English words for whole-word rules
+UPPER = 20000     # also emit the ALL-CAPS form for the top-N words
+TYPO_FAMILY = "Tokenizer Mono"   # name IDs 16/17: one family, ten styles
 NCOLORS = 5
 # Opaque colors: translucent boxes show seams where neighbours overlap.
 # Palette 0 is for light backgrounds, palette 1 for dark (CSS: font-palette).
@@ -94,21 +116,58 @@ def draw_box(pen, left_round: bool, right_round: bool):
     pen.closePath()
 
 
-def ascii_glyphs(font) -> dict[int, str]:
-    cmap = font.getBestCmap()
-    return {c: cmap[c] for c in range(0x20, 0x7F) if c in cmap}
+def covered_chars(font) -> dict[str, str]:
+    """char -> glyph name for every printable, non-combining character in the
+    font's cmap. Space is the only whitespace included."""
+    out = {}
+    for cp, g in font.getBestCmap().items():
+        ch = chr(cp)
+        if cp == 0x20 or (cp > 0x20 and unicodedata.category(ch)[0] not in "CMZ"):
+            out[ch] = g
+    return out
 
 
-def vocab_tokens(spec: str) -> list[bytes]:
-    toks = vocab.load(spec).tokens()
-    return sorted({t for t in toks if 2 <= len(t) <= MAX_LEN})
+def greedy(text: str, vocab_set: set[str]) -> list[int]:
+    """Token starts that longest-match over vocab_set would produce."""
+    pos, out = 0, []
+    while pos < len(text):
+        out.append(pos)
+        n = 1
+        for L in range(min(MAX_LEN, len(text) - pos), 1, -1):
+            if text[pos:pos + L] in vocab_set:
+                n = L
+                break
+        pos += n
+    return out
+
+
+def word_rules(v, vocab_set: set[str], chars: dict[str, str]):
+    """Yield (form, token_starts) for common words where greedy is wrong."""
+    from wordfreq import top_n_list
+    seen = set()
+    for i, w in enumerate(top_n_list("en", WORDS)):
+        if not all(c in chars for c in w) or len(w) < 2:
+            continue
+        forms = [(" " + w, "foo " + w + " bar", 3),
+                 (" " + w.capitalize(), "foo " + w.capitalize() + " bar", 3),
+                 (w, "\n" + w + " bar", 1)]
+        if i < UPPER and len(w) > 2:
+            forms.append((" " + w.upper(), "foo " + w.upper() + " bar", 3))
+        for form, ctx, a in forms:
+            if form in seen or len(form) > MAX_LEN:
+                continue
+            seen.add(form)
+            real = v.split(ctx, a, a + len(form))
+            if real is None or len(real) < 2 or real == greedy(form, vocab_set):
+                continue
+            yield form, real
 
 
 def apply(font, kit):
     from fontkit import build_chain_lookup_format1
 
-    glyphs = ascii_glyphs(font)
-    names = list(glyphs.values())
+    chars = covered_chars(font)
+    names = sorted(set(chars.values()))
     kit.set_palette(PALETTE_LIGHT, PALETTE_DARK)
 
     # --- boxes: one outline per shape, colored per-use through the palette
@@ -158,23 +217,45 @@ def apply(font, kit):
     fea.append("feature calt { lookup TOK; lookup XFILL; lookup FSM; } calt;")
 
     # --- the tokenizer lookup, built by hand (format 1, many subtables)
-    toks = vocab_tokens(VARIANTS[VARIANT][0])
-    toks.sort(key=len, reverse=True)
-    rules = []
-    sp = glyphs[0x20]
+    v = vocab.load(VARIANTS[VARIANT][0])
+    all_toks = v.tokens()
+    toks = sorted({t for t in all_toks if 2 <= len(t) <= MAX_LEN and all(c in chars for c in t)})
+    vocab_set = set(toks) | {t for t in all_toks if len(t) == 1}
+    sp = chars[" "]
+
+    def records(n: int, starts: list[int]):
+        """SubstLookupRecords for a match of n glyphs with token starts at
+        `starts`: lookups 0/1/2 = toS/toM/toE, 4 = XFILL (1-char tokens)."""
+        ends = [s - 1 for s in starts[1:]] + [n - 1]
+        recs = []
+        for st, en in zip(starts, ends):
+            if st == en:
+                recs.append((st, 4))
+            else:
+                recs += [(st, 0)] + [(i, 1) for i in range(st + 1, en)] + [(en, 2)]
+        return recs
+
+    rules = []  # (sort key, rule); longest first, word rules before vocab rules
     for t in toks:
-        inp = [glyphs[b] for b in t]
-        n = len(inp)
-        recs = [(0, 0)] + [(i, 1) for i in range(1, n - 1)] + [(n - 1, 2)]
-        if t.strip() == b"":
+        inp = [chars[c] for c in t]
+        recs = records(len(inp), [0])
+        if t.strip(" ") == "":
             # A run of spaces only tokenizes as a unit when another space
-            # follows (tiktoken's `\s+(?!\S)`); otherwise the last space
+            # follows (tiktoken's whitespace rule); otherwise the last space
             # belongs to the next word. Trailing runs at end of line are the
             # one case we can't express (no "end of text" lookahead).
-            rules.append(([], inp, [sp], recs))
+            rules.append(((-len(t), 1), ([], inp, [sp], recs)))
         else:
-            rules.append((inp, recs))
+            rules.append(((-len(t), 1), (inp, recs)))
+    nword = 0
+    for form, starts in word_rules(v, vocab_set, chars):
+        inp = [chars[c] for c in form]
+        rules.append(((-len(form), 0), (inp, records(len(inp), starts))))
+        nword += 1
+    rules.sort(key=lambda r: r[0])
+    rules = [r for _, r in rules]
     tok_lookup = build_chain_lookup_format1(font, rules)
-    print(f"tokenizer[{VARIANT}]: {len(toks)} tokens (2..{MAX_LEN} chars) in {tok_lookup.SubTableCount} subtables")
+    print(f"tokenizer[{VARIANT}]: {len(toks)} vocab rules + {nword} word rules, "
+          f"{len(names)} chars, {tok_lookup.SubTableCount} subtables")
 
     kit.add_fea("\n".join(fea), overrides={3: tok_lookup})

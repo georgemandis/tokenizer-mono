@@ -208,10 +208,15 @@ def merge_gsub(font: TTFont, fea: str, overrides: dict[int, otTables.Lookup] | N
 
 # ---- naming ----------------------------------------------------------------
 
-def rename(font: TTFont, family: str, style: str, old_family: str, version: str = "0.1"):
+def rename(font: TTFont, family: str, style: str, old_family: str, version: str = "0.1",
+           typo_family: str | None = None, typo_style: str | None = None) -> str:
+    """Rename the font. `family`/`style` are the legacy (ID 1/2) names; when
+    `typo_family`/`typo_style` are given they become IDs 16/17, which is what
+    Font Book and most pickers group by, and the PostScript name is built
+    from them. Returns the PostScript name."""
     name = font["name"]
-    ps_family = re.sub(r"[^A-Za-z0-9]", "", family)
-    ps_style = re.sub(r"[^A-Za-z0-9]", "", style)
+    ps_family = re.sub(r"[^A-Za-z0-9]", "", typo_family or family)
+    ps_style = re.sub(r"[^A-Za-z0-9]", "", typo_style or style)
     full = family if style == "Regular" else f"{family} {style}"
     for rec in name.names:
         try:
@@ -219,8 +224,12 @@ def rename(font: TTFont, family: str, style: str, old_family: str, version: str 
         except UnicodeDecodeError:
             continue
         nid = rec.nameID
-        if nid in (1, 16):
+        if nid == 1:
             rec.string = family
+        elif nid == 16:
+            rec.string = typo_family or family
+        elif nid == 17:
+            rec.string = typo_style or style
         elif nid == 4:
             rec.string = full
         elif nid == 6:
@@ -235,9 +244,14 @@ def rename(font: TTFont, family: str, style: str, old_family: str, version: str 
             rec.string = s.replace(old_family, family).replace("IBM Plex", family)
         elif old_family in s:
             rec.string = s.replace(old_family, family)
+    if typo_family:
+        for pid, eid, lid in ((3, 1, 0x409), (1, 0, 0)):
+            name.setName(typo_family, 16, pid, eid, lid)
+            name.setName(typo_style or style, 17, pid, eid, lid)
     # Plex has a `meta` table and a DSIG we can't re-sign; drop the signature.
     if "DSIG" in font:
         del font["DSIG"]
+    return f"{ps_family}-{ps_style}"
 
 
 def export(font: TTFont, out_dir: Path, stem: str) -> list[Path]:

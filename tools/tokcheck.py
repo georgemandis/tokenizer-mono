@@ -36,8 +36,10 @@ def font_boundaries(font, text: str) -> set[int]:
 def check(variant: str, lines: list[str], verbose: bool):
     spec = importlib.util.spec_from_file_location("recipe", ROOT / "fonts/tokenizer/recipe.py")
     recipe = importlib.util.module_from_spec(spec); spec.loader.exec_module(recipe)
-    vspec, family, _ = recipe.VARIANTS[variant]
-    path = ROOT / "build/tokenizer" / f"{family.replace(' ', '')}-Regular.ttf"
+    import json
+    vspec = recipe.VARIANTS[variant][0]
+    manifest = json.loads((ROOT / "build/tokenizer/manifest.json").read_text())
+    path = ROOT / "build/tokenizer" / manifest[variant]["file"].replace(".woff2", ".ttf")
     v = vocab.load(vspec)
     font = hb.Font(hb.Face(hb.Blob.from_file_path(str(path))))
 
@@ -64,7 +66,7 @@ def main():
     verbose = "-v" in sys.argv
     which = args[0] if args else "all"
     corpus = Path(args[1]) if len(args) > 1 else ROOT / "fonts/tokenizer/corpus.txt"
-    lines = [l.encode("ascii", "ignore").decode() for l in corpus.read_text().split("\n") if l.strip()]
+    lines = [l for l in corpus.read_text(encoding="utf-8").split("\n") if l.strip()]
     if which == "all":
         import json
         which = list(json.loads((ROOT / "build/tokenizer/manifest.json").read_text()))

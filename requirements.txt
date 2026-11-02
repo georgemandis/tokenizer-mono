@@ -5,3 +5,4 @@ pillow==13.0.0
 tiktoken==0.14.0
 tokenizers==0.23.3
 uharfbuzz==0.57.0
+wordfreq==3.1.1

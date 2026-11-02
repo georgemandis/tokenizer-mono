@@ -2,17 +2,30 @@
 
 A spec is "tiktoken:<encoding>" or "hf:<repo_id>" (a repo with tokenizer.json).
 load(spec) returns an object with:
-    .tokens()          -> list[bytes]   every token that is printable ASCII
-    .boundaries(text)  -> set[int]      char offsets where tiktoken/HF start a token
+    .tokens()          -> list[str]   every token that decodes to valid text
+    .boundaries(text)  -> set[int]    char offsets where the real tokenizer starts a token
+    .split(ctx, a, b)  -> list[int] | None   token starts inside ctx[a:b], relative to a,
+                                      or None if the span edges aren't token boundaries
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 HF_CACHE = ROOT / "vendor" / "hf"
 
-ASCII = set(range(0x20, 0x7F))
+BYTE_FALLBACK = re.compile(r"^<0x[0-9A-Fa-f]{2}>$")
+
+
+class _Base:
+    def split(self, ctx: str, a: int, b: int) -> list[int] | None:
+        """Token starts within ctx[a:b] (relative to a) when the real tokenizer
+        sees the whole of ctx. None if a or b is not itself a boundary."""
+        bd = self.boundaries(ctx)
+        if a not in bd or (b < len(ctx) and b not in bd):
+            return None
+        return [x - a for x in sorted(bd) if a <= x < b]
 
 
 def _bytes_to_unicode():
@@ -28,23 +41,30 @@ def _bytes_to_unicode():
     return dict(zip((chr(c) for c in cs), bs))
 
 
-class Tiktoken:
+class Tiktoken(_Base):
     def __init__(self, name: str):
         import tiktoken
         self.enc = tiktoken.get_encoding(name)
 
-    def tokens(self) -> list[bytes]:
-        return [t for t in self.enc._mergeable_ranks if all(b in ASCII for b in t)]
+    def tokens(self) -> list[str]:
+        out = []
+        for t in self.enc._mergeable_ranks:
+            try:
+                out.append(t.decode("utf-8"))
+            except UnicodeDecodeError:
+                pass  # partial UTF-8 sequence: not a text token on its own
+        return out
 
     def boundaries(self, text: str) -> set[int]:
+        raw = text.encode("utf-8")
         pos, out = 0, set()
         for tid in self.enc.encode(text, disallowed_special=()):
-            out.add(pos)
+            out.add(len(raw[:pos].decode("utf-8", "ignore")))
             pos += len(self.enc.decode_single_token_bytes(tid))
         return out
 
 
-class HF:
+class HF(_Base):
     def __init__(self, repo: str):
         from huggingface_hub import hf_hub_download
         from tokenizers import Tokenizer
@@ -54,31 +74,33 @@ class HF:
         # with a Replace/Metaspace decoder; byte-level BPE (GPT-2, Llama 3,
         # Qwen, DeepSeek) uses a ByteLevel decoder and the GPT-2 byte alphabet.
         import json
-        decoder = json.dumps(json.loads(self.tok.to_str()).get("decoder") or {})
+        cfg = json.loads(self.tok.to_str())
+        decoder = json.dumps(cfg.get("decoder") or {})
         self.metaspace = "ByteLevel" not in decoder
+        # WordPiece (BERT): "##xyz" is a continuation, anything else starts a
+        # word. We approximate word-start tokens as space-prefixed ones.
+        self.wordpiece = cfg["model"]["type"] == "WordPiece"
         self.u2b = _bytes_to_unicode()
 
-    def _to_bytes(self, s: str) -> bytes | None:
+    def _to_text(self, s: str) -> str | None:
+        if self.wordpiece:
+            return s[2:] if s.startswith("##") else " " + s
         if self.metaspace:
-            s = s.replace("▁", " ")
-            try:
-                return s.encode("ascii")
-            except UnicodeEncodeError:
-                return None
+            return s.replace("\u2581", " ")
         try:
-            return bytes(self.u2b[c] for c in s)
-        except KeyError:
+            return bytes(self.u2b[c] for c in s).decode("utf-8")
+        except (KeyError, UnicodeDecodeError):
             return None
 
-    def tokens(self) -> list[bytes]:
+    def tokens(self) -> list[str]:
         out = []
         added = {a.content for a in self.tok.get_added_tokens_decoder().values()}
         for s in self.tok.get_vocab():
-            if s in added:
+            if s in added or BYTE_FALLBACK.match(s):
                 continue
-            b = self._to_bytes(s)
-            if b and all(x in ASCII for x in b):
-                out.append(b)
+            t = self._to_text(s)
+            if t:
+                out.append(t)
         return out
 
     def boundaries(self, text: str) -> set[int]:

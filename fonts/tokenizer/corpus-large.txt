@@ -1,0 +1,203 @@
+The quick brown fox jumps over the lazy dog, and nobody is surprised anymore.
+Tokenization is the process of splitting text into pieces a language model can count.
+Byte-pair encoding starts from single bytes and repeatedly merges the most frequent pair.
+Common words like "the", "and", and "of" become single tokens, while rarer ones get split.
+Unbelievably, antidisestablishmentarianism is still a word people type on purpose.
+In 2024 the price was $1,299.99, which is roughly 12% higher than in 2023.
+def tokenize(text: str) -> list[int]:
+    return [ord(c) for c in text if c.isprintable()]
+const result = await fetch("https://example.com/api/v1/items?limit=50");
+console.log(JSON.stringify({ ok: true, count: items.length }));
+He said, "I don't think they've seen it, but we'll find out tomorrow."
+Performance art is just engineering without a deadline, or so I have been told.
+SELECT id, name FROM users WHERE created_at > '2024-01-01' ORDER BY name;
+The committee's recommendations were implemented incrementally throughout the fiscal year.
+    indented code with    several   spaces   and tabs is where tokenizers get weird.
+#include <stdio.h>
+int main(void) { printf("hello, world\n"); return 0; }
+Photosynthesis converts carbon dioxide and water into glucose and oxygen using sunlight.
+She sells seashells by the seashore; the shells she sells are surely seashells.
+----------------------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+
+"""Text wrapping and filling.
+"""
+
+# Copyright (C) 1999-2001 Gregory P. Ward.
+# Copyright (C) 2002 Python Software Foundation.
+# Written by Greg Ward <gward@python.net>
+
+import re
+
+__all__ = ['TextWrapper', 'wrap', 'fill', 'dedent', 'indent', 'shorten']
+
+# Hardcode the recognized whitespace characters to the US-ASCII
+# whitespace characters.  The main reason for doing this is that
+# some Unicode spaces (like \u00a0) are non-breaking whitespaces.
+_whitespace = '\t\n\x0b\x0c\r '
+
+class TextWrapper:
+    """
+    Object for wrapping/filling text.  The public interface consists of
+    the wrap() and fill() methods; the other methods are just there for
+    subclasses to override in order to tweak the default behaviour.
+    If you want to completely replace the main wrapping algorithm,
+    you'll probably have to override _wrap_chunks().
+
+    Several instance attributes control various aspects of wrapping:
+      width (default: 70)
+        the maximum width of wrapped lines (unless break_long_words
+        is false)
+      initial_indent (default: "")
+        string that will be prepended to the first line of wrapped
+        output.  Counts towards the line's width.
+      subsequent_indent (default: "")
+        string that will be prepended to all lines save the first
+        of wrapped output; also counts towards each line's width.
+      expand_tabs (default: true)
+        Expand tabs in input text to spaces before further processing.
+        Each tab will become 0 .. 'tabsize' spaces, depending on its position
+        in its line.  If false, each tab is treated as a single character.
+      tabsize (default: 8)
+        Expand tabs in input text to 0 .. 'tabsize' spaces, unless
+        'expand_tabs' is false.
+      replace_whitespace (default: true)
+        Replace all whitespace characters in the input text by spaces
+        after tab expansion.  Note that if expand_tabs is false and
+        replace_whitespace is true, every tab will be converted to a
+        single space!
+      fix_sentence_endings (default: false)
+        Ensure that sentence-ending punctuation is always followed
+        by two spaces.  Off by default because the algorithm is
+        (unavoidably) imperfect.
+      break_long_words (default: true)
+        Break words longer than 'width'.  If false, those words will not
+        be broken, and some lines might be longer than 'width'.
+      break_on_hyphens (default: true)
+        Allow breaking hyphenated words. If true, wrapping will occur
+        preferably on whitespaces and right after hyphens part of
+        compound words.
+      drop_whitespace (default: true)
+        Drop leading and trailing whitespace from lines.
+      max_lines (default: None)
+        Truncate wrapped lines.
+      placeholder (default: ' [...]')
+        Append to the last line of truncated text.
+    """
+
+    unicode_whitespace_trans = dict.fromkeys(map(ord, _whitespace), ord(' '))
+
+    # This funky little regex is just the trick for splitting
+    # text up into word-wrappable chunks.  E.g.
+    #   "Hello there -- you goof-ball, use the -b option!"
+    # splits into
+    #   Hello/ /there/ /--/ /you/ /goof-/ball,/ /use/ /the/ /-b/ /option!
+    # (after stripping out empty strings).
+    word_punct = r'[\w!"\'&.,?]'
+    letter = r'[^\d\W]'
+    whitespace = r'[%s]' % re.escape(_whitespace)
+    nowhitespace = '[^' + whitespace[1:]
+    wordsep_re = re.compile(r'''
+        ( # any whitespace
+          %(ws)s+
+        | # em-dash between words
+          (?<=%(wp)s) -{2,} (?=\w)
+        | # word, possibly hyphenated
+          %(nws)s+? (?:
+            # hyphenated word
+              -(?: (?<=%(lt)s{2}-) | (?<=%(lt)s-%(lt)s-))
+              (?= %(lt)s -? %(lt)s)
+            | # end of word
+              (?=%(ws)s|\z)
+            | # em-dash
+              (?<=%(wp)s) (?=-{2,}\w)
+            )
+        )''' % {'wp': word_punct, 'lt': letter,
+                'ws': whitespace, 'nws': nowhitespace},
+        re.VERBOSE)
+    del word_punct, letter, nowhitespace
+
+    # This less funky little regex just split on recognized spaces. E.g.
+    #   "Hello there -- you goof-ball, use the -b option!"
+    # splits into
+    #   Hello/ /there/ /--/ /you/ /goof-ball,/ /use/ /the/ /-b/ /option!/
+    wordsep_simple_re = re.compile(r'(%s+)' % whitespace)
+    del whitespace
+
+    # XXX this is not locale- or charset-aware -- string.lowercase
+    # is US-ASCII only (and therefore English-only)
+    sentence_end_re = re.compile(r'[a-z]'             # lowercase letter
+                                 r'[\.\!\?]'          # sentence-ending punct.
+                                 r'[\"\']?'           # optional end-of-quote
+                                 r'\z')               # end of chunk
+
+    def __init__(self,
+                 width=70,
+                 initial_indent="",
+                 subsequent_indent="",
+                 expand_tabs=True,
+                 replace_whitespace=True,
+                 fix_sentence_endings=False,
+                 break_long_words=True,
+                 drop_whitespace=True,
+She said, “I don’t think they’ve seen it,” and shrugged — it wasn’t her café anyway.
+Naïve résumé writers overuse the word “synergy”; the clichés pile up like crème brûlée.
+Prices: €1,299.99 or £1,099 (≈ $1,450), ±2% depending on the exchange rate… allegedly.
+The Übermensch, the façade, the jalapeño, the smörgåsbord: borrowed words keep their hats.
