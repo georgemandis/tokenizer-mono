@@ -1,5 +1,10 @@
 # tokenizer-mono
 
+**Download the fonts**: the [latest release](https://github.com/georgemandis/tokenizer-mono/releases/latest)
+has `tokenizer-mono-fonts.zip` (TTF, WOFF, WOFF2 for every face, plus the
+demo page) and `tokenizer-mono-woff2.zip` (web files only). Every release
+lists each face's accuracy in its notes.
+
 Absurd OpenType experiments built on top of IBM Plex. Two projects live here:
 
 1. **Tokenizer font** (first): a color font whose GSUB rules approximate a BPE
@@ -225,10 +230,11 @@ only exist in TrueType outlines, and TTF-in-.otf is just a rename.
 `.github/workflows/build.yml` builds every variant in parallel on each push
 to `main`, runs the fidelity check into the job summary, and uploads a
 `tokenizer-mono-fonts` artifact (fonts, manifest, demo page, in the repo's
-layout so `demo/tokenizer.html` works from the unzipped folder). Pushing a
-`v*` tag also creates a GitHub release with the zip attached:
+layout so `demo/tokenizer.html` works from the unzipped folder, plus a
+WOFF2-only zip). Pushing a `v*` tag also creates a GitHub release with both
+zips attached and the accuracy table in the notes:
 
-    git tag v0.1.0 && git push origin v0.1.0
+    git tag v0.1.1 && git push origin v0.1.1
 
 ## Naming
 

@@ -32,7 +32,7 @@ jobs:
       - run: ./scripts/fetch-plex.sh
       - run: make smoke test
       - run: make tokenizer V=${{ matrix.variant }}
-      - run: make tokcheck V=${{ matrix.variant }} | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: make tokcheck V=${{ matrix.variant }} | grep 'tokens font/real' | tee build/tokenizer/tokcheck-${{ matrix.variant }}.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: variant-${{ matrix.variant }}
@@ -66,16 +66,39 @@ jobs:
           (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
           print(f"{len(manifest)} variants")
           PY
+      - name: Release notes with the accuracy table
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          rows = []
+          for f in sorted(pathlib.Path("build/tokenizer").glob("tokcheck-*.txt")):
+              m = re.search(r"(\w+)\s+tokens font/real (\d+)/(\d+)\s+precision ([\d.]+%)\s+recall ([\d.]+%)\s+shaping (\d+) us/char\s+size ([\d.]+ MB)", f.read_text())
+              if m: rows.append(m.groups())
+          rows.sort(key=lambda r: -float(r[3].rstrip("%")))
+          out = ["Monospace color fonts that highlight LLM tokens as you type. One style per tokenizer, "
+                 f"{len(rows)} in this release, all in one family \"Tokenizer Mono\".", "",
+                 "**Downloads**: `tokenizer-mono-fonts.zip` has TTF, WOFF and WOFF2 for every face plus the demo page; "
+                 "`tokenizer-mono-woff2.zip` is just the WOFF2 files for the web.", "",
+                 "Boundary agreement with the real tokenizer on the test corpus (see the README for how this is measured):", "",
+                 "| face | precision | recall | tokens font / real | shaping | TTF |", "|---|---|---|---|---|---|"]
+          out += [f"| {n} | {p} | {r} | {a} / {b} | {s} µs/char | {z} |" for n, a, b, p, r, s, z in rows]
+          pathlib.Path("notes.md").write_text("\n".join(out) + "\n")
+          PY
+          cat notes.md
       - name: Zip (fonts + demo page, same layout as the repo)
         run: |
+          rm -f build/tokenizer/tokcheck-*.txt
           zip -qr tokenizer-mono-fonts.zip build/tokenizer demo README.md
-          ls -la tokenizer-mono-fonts.zip
+          (cd build/tokenizer && zip -q ../../tokenizer-mono-woff2.zip *.woff2 manifest.json)
+          ls -la tokenizer-mono-*.zip
       - uses: actions/upload-artifact@v4
         with:
           name: tokenizer-mono-fonts
-          path: tokenizer-mono-fonts.zip
+          path: |
+            tokenizer-mono-fonts.zip
+            tokenizer-mono-woff2.zip
       - name: Release (on v* tags)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" tokenizer-mono-fonts.zip --title "Tokenizer Mono ${GITHUB_REF_NAME}" --generate-notes
+        run: gh release create "${GITHUB_REF_NAME}" tokenizer-mono-fonts.zip tokenizer-mono-woff2.zip --title "Tokenizer Mono ${GITHUB_REF_NAME}" --notes-file notes.md
