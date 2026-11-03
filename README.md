@@ -45,7 +45,7 @@ legacy family name (ID 1) and the file name carry the variant.
 | bloom    | bigscience/bloom                        | BigScience BLOOM (multilingual) |
 | t5       | google-t5/t5-base                       | Google T5 (SentencePiece Unigram, not BPE) |
 | bert     | bert-base-cased                         | Google BERT (WordPiece; ## continuations approximated) |
-| superbpe | UW/OLMo2-8B-SuperBPE-t180k              | UW SuperBPE for OLMo 2 (tokens cross word boundaries) |
+| superbpe | 87.2% | 89.2% | 1931 / 1886 | 62 µs/char | 16.5 MB |
 | granite  | ibm-granite/granite-3.3-8b-instruct     | IBM Granite 3 (StarCoder vocabulary); also StarCoder / StarCoder2 |
 | falcon3  | tiiuae/Falcon3-7B-Base                  | TII Falcon 3 |
 | hunyuan  | tencent/Hunyuan-7B-Instruct             | Tencent Hunyuan |
@@ -102,8 +102,12 @@ Two kinds of tokenizer need extra handling:
   emitted three times, for the lower, Capitalized and ALL-CAPS spellings.
 
 SuperBPE is the odd one out in the other direction: its tokens cross word
-boundaries (" of the" is one token), which the vocabulary rules handle, but
-the whole-word rules only know single words, so its accuracy is lower.
+boundaries (" of the other" is one token). Some of them end in a fragment
+(", h") that BPE almost never emits, because the letters after it merge
+into their own word first, but greedy would grab ", h" and leave "alf". So in
+a superword vocabulary every token with an inner space gets a class-based
+lookahead and only fires when the next glyph is not a letter or digit. The
+whole-word rules still only know single words, so its accuracy stays lower.
 
 Every character Plex Mono has a glyph for is covered (1,001 characters: ASCII,
 Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
@@ -141,7 +145,7 @@ from a local run of the current build, reproduced by CI on every push (sorted by
 | tekken | 96.5% | 96.5% | 2282 / 2281 | 48 µs/char | 11.2 MB |
 | clip | 95.8% | 96.0% | 2308 / 2302 | 5 µs/char | 9.0 MB |
 | bloom | 93.2% | 93.8% | 2236 / 2221 | 55 µs/char | 12.9 MB |
-| superbpe | 85.7% | 87.7% | 1929 / 1886 | 29 µs/char | 14.3 MB |
+| superbpe | 87.2% | 89.2% | 1931 / 1886 | 62 µs/char | 16.5 MB |
 | t5 | 83.0% | 92.7% | 2854 / 2556 | 32 µs/char | 7.1 MB |
 
 The outliers are explained by their algorithms: T5 is a Unigram model that

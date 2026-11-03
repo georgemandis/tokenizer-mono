@@ -20,6 +20,7 @@ whole-word rules: the top WORDS English words (wordfreq), in the forms
 " word", " Word" and line-initial "word", tokenized by the real tokenizer in
 context. A rule is emitted only where greedy would get the split wrong.
 """
+import re
 import sys
 import unicodedata
 from pathlib import Path
@@ -290,6 +291,28 @@ def apply(font, kit):
         return recs
 
     rules = []  # (sort key, rule); longest first, word rules before vocab rules
+    # SuperBPE-style vocabularies have tokens that cross word boundaries
+    # (" of the other"). Some end in a fragment (", h") that BPE almost never
+    # emits, because the following letters merge into their own word first,
+    # and greedy would grab them (", h" + "alf"). So multi-word tokens only
+    # fire when the next glyph is not a letter or digit, which needs class
+    # based lookahead: class 1 = letters/digits, class 2 = space, 0 = rest.
+    # (A token at the very end of a line has no next glyph and falls back to
+    # shorter tokens; lines rarely end mid-sentence without punctuation.)
+    superword = lambda t: re.search(r"[^\W\d_] +[^\W\d_]", t) is not None  # letters, space(s), letters
+    multiword = any(superword(t) for t in toks)
+    la_classes = None
+    if multiword:
+        la_classes = {}
+        for c, g in chars.items():
+            k = 1 if c.isalnum() else 2 if c == " " else 0
+            if k:
+                la_classes[g] = k
+                for sh in SHAPES:
+                    la_classes[f"{g}.{sh}"] = k
+                    for n in range(NCOLORS):
+                        la_classes[f"{g}.{sh}{n}"] = k
+    la_space = [2] if multiword else [sp]
     for t in toks:
         inp = [chars[c] for c in t]
         recs = records(len(inp), [0])
@@ -298,7 +321,10 @@ def apply(font, kit):
             # follows (tiktoken's whitespace rule); otherwise the last space
             # belongs to the next word. Trailing runs at end of line are the
             # one case we can't express (no "end of text" lookahead).
-            rules.append(((-len(t), 1), ([], inp, [sp], recs)))
+            rules.append(((-len(t), 1), ([], inp, la_space, recs)))
+        elif multiword and " " in t.strip(" "):  # any token with an inner space, in a superword vocabulary
+            rules.append(((-len(t), 1), ([], inp, [0], recs)))
+            rules.append(((-len(t), 1), ([], inp, [2], recs)))
         else:
             rules.append(((-len(t), 1), (inp, recs)))
     nword = 0
@@ -320,9 +346,10 @@ def apply(font, kit):
                     word_glyphs[f"{g}.{sh}"] = 1
                     for k in range(NCOLORS):
                         word_glyphs[f"{g}.{sh}{k}"] = 1
-    tok_lookup = build_chain_lookup_format1(font, rules, backtrack_classes=word_glyphs)
+    tok_lookup = build_chain_lookup_format1(font, rules, backtrack_classes=word_glyphs,
+                                            lookahead_classes=la_classes)
     print(f"tokenizer[{VARIANT}]: {len(toks)} vocab rules + {nword} word rules, "
           f"{len(names)} chars, {tok_lookup.SubTableCount} subtables, "
-          f"space-attaches={space_attaches}")
+          f"space-attaches={space_attaches}, superwords={sum(map(superword, toks)) if multiword else 0}")
 
     kit.add_fea("\n".join(fea), overrides={3: tok_lookup})

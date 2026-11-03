@@ -273,7 +273,8 @@ def export(font: TTFont, out_dir: Path, stem: str) -> list[Path]:
 # ---- hand-built chained contextual lookups ----------------------------------
 
 def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
-                               backtrack_classes: dict[str, int] | None = None) -> otTables.Lookup:
+                               backtrack_classes: dict[str, int] | None = None,
+                               lookahead_classes: dict[str, int] | None = None) -> otTables.Lookup:
     """Build a GSUB type 6 (chained contextual) lookup using format 1 (glyph
     based rule sets), split across as many Extension-wrapped subtables as the
     16-bit offset limits require.
@@ -284,22 +285,32 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
     first glyph, order is preserved across subtables, so "longest first" works.
     Backtrack is given in logical order (closest glyph last).
 
-    With backtrack_classes (glyph -> class, unlisted glyphs are class 0) the
-    lookup is built as format 2 instead: input and lookahead use one class per
-    glyph, so rules read the same, but a rule's backtrack is a list of class
-    numbers, which lets a rule say "preceded by anything that is not a letter".
+    With backtrack_classes and/or lookahead_classes (glyph -> class, unlisted
+    glyphs are class 0) the lookup is built as format 2 instead: input uses one
+    class per glyph, so rules read the same, but a rule's backtrack/lookahead
+    is then a list of class numbers, which lets a rule say "preceded by (or
+    followed by) anything that is not a letter". A context that runs past the
+    start or end of the text never matches, as in format 1.
     """
     gid = font.getReverseGlyphMap()
     by_first: dict[str, list] = {}
     for r in rules:
         bt, inp, la, recs = r if len(r) == 4 else ([], r[0], [], r[1])
         by_first.setdefault(inp[0], []).append((bt, inp, la, recs))
-    if backtrack_classes is not None:
+    fmt2 = backtrack_classes is not None or lookahead_classes is not None
+    if fmt2:
         budget = min(budget, 48000)  # leave room for the class tables + set offsets
-        seen = sorted({g for rl in by_first.values() for _, inp, la, _ in rl for g in list(inp) + list(la)}, key=gid.get)
+        seen = {g for rl in by_first.values() for _, inp, la, _ in rl
+                for g in list(inp) + (list(la) if lookahead_classes is None else [])
+                + (list(bt) if backtrack_classes is None else [])}
+        seen = sorted(seen, key=gid.get)
         cls = {g: i + 1 for i, g in enumerate(seen)}
         in_def = otTables.ClassDef(); in_def.classDefs = dict(cls)
-        bt_def = otTables.ClassDef(); bt_def.classDefs = dict(backtrack_classes)
+        bt_def, la_def = in_def, in_def
+        if backtrack_classes is not None:
+            bt_def = otTables.ClassDef(); bt_def.classDefs = dict(backtrack_classes)
+        if lookahead_classes is not None:
+            la_def = otTables.ClassDef(); la_def.classDefs = dict(lookahead_classes)
 
     def rule_size(rule):
         bt, inp, la, recs = rule
@@ -338,9 +349,11 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
     def make_rule(bt, inp, la, recs, fmt2):
         r = otTables.ChainSubClassRule() if fmt2 else otTables.ChainSubRule()
         if fmt2:
-            r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt)), len(bt)
+            bt_c = list(bt) if backtrack_classes is not None else [cls[g] for g in bt]
+            la_c = list(la) if lookahead_classes is not None else [cls[g] for g in la]
+            r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt_c)), len(bt_c)
             r.Input, r.InputGlyphCount = [cls[g] for g in inp[1:]], len(inp)
-            r.LookAhead, r.LookAheadGlyphCount = [cls[g] for g in la], len(la)
+            r.LookAhead, r.LookAheadGlyphCount = la_c, len(la_c)
         else:
             r.Backtrack, r.BacktrackGlyphCount = list(reversed(bt)), len(bt)
             r.Input, r.InputGlyphCount = list(inp[1:]), len(inp)
@@ -358,7 +371,7 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
         st = otTables.ChainContextSubst()
         st.Coverage = otTables.Coverage()
         st.Coverage.glyphs = [c[0] for c in chunk]
-        if backtrack_classes is None:
+        if not fmt2:
             st.Format = 1
             st.ChainSubRuleSet = []
             for first, rl in chunk:
@@ -369,7 +382,7 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
             st.ChainSubRuleSetCount = len(st.ChainSubRuleSet)
         else:
             st.Format = 2
-            st.BacktrackClassDef, st.InputClassDef, st.LookAheadClassDef = bt_def, in_def, in_def
+            st.BacktrackClassDef, st.InputClassDef, st.LookAheadClassDef = bt_def, in_def, la_def
             sets = [None] * (len(cls) + 1)
             for first, rl in chunk:
                 rs = otTables.ChainSubClassSet()
