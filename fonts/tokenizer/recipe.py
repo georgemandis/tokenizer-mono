@@ -75,6 +75,7 @@ def configure(name: str):
 
 
 MAX_LEN = 128     # longest token to emit a rule for (dash runs go to 128)
+NBANDS = 32       # superword vocabularies: rank bands applied before the main lookup
 WORDS = 60000     # wordfreq top-N English words for whole-word rules
 UPPER = 20000     # also emit the ALL-CAPS form for the top-N words
 TYPO_FAMILY = "Tokenizer Mono"   # name IDs 16/17: one family, ten styles
@@ -214,8 +215,13 @@ def apply(font, kit):
 
     # --- feature code. Lookup indices follow definition order:
     #   0 toS, 1 toM, 2 toE, 3 TOK (placeholder, replaced below), 4 XFILL,
-    #   5.. color singles (toS0..toX4 = 20 lookups), then FSM.
+    #   [BAND0..BANDn-1 for superword vocabularies, placeholders too], then
+    #   color singles (toS0..toX4 = 20 lookups), then FSM.
     v = vocab.load(VARIANTS[VARIANT][0])
+    superword = lambda t: re.search(r"[^\W\d_] +[^\W\d_]", t) is not None  # letters, space(s), letters
+    multiword = any(superword(t) for t in v.tokens())
+    nb = NBANDS if multiword else 0
+    TOK_IDX, XFILL_IDX = 3, 4
     fea = ["languagesystem DFLT dflt;", "languagesystem latn dflt;"]
     cls = lambda sh, k="": "[" + " ".join(f"{g}.{sh}{k}" for g in names) + "]"
     fea.append(f"@PLAIN = [{' '.join(names)}];")
@@ -224,15 +230,20 @@ def apply(font, kit):
         for k in range(NCOLORS):
             fea.append(f"@{sh.upper()}{k} = {cls(sh, k)};")
 
+    # toS/toM/toE also remap the other shapes: a superword rank band may
+    # re-shape glyphs that an earlier band already claimed (see below).
     for sh in "sme":
-        fea.append(f"lookup to{sh.upper()} {{ sub @PLAIN by @{sh.upper()}; }} to{sh.upper()};")
-    fea.append("lookup TOK { sub box.s by box.x; } TOK;")  # placeholder, index 3
+        others = " ".join(f"sub @{o.upper()} by @{sh.upper()};" for o in SHAPES if o != sh)
+        fea.append(f"lookup to{sh.upper()} {{ sub @PLAIN by @{sh.upper()}; {others} }} to{sh.upper()};")
+    fea.append("lookup TOK { sub box.s by box.x; } TOK;")  # placeholder
     if getattr(v, "nospace", False):
         # WordPiece and CLIP never tokenize whitespace: leave lone spaces unboxed.
         fea.append("lookup XFILL { sub [" + " ".join(n for n in names if n != chars[" "]) + "] by ["
                    + " ".join(f"{n}.x" for n in names if n != chars[" "]) + "]; } XFILL;")
     else:
         fea.append("lookup XFILL { sub @PLAIN by @X; } XFILL;")
+    for i in range(nb):
+        fea.append(f"lookup BAND{i} {{ sub box.s by box.x; }} BAND{i};")  # placeholders
     for sh in SHAPES:
         for k in range(NCOLORS):
             fea.append(f"lookup to{sh.upper()}{k} {{ sub @{sh.upper()} by @{sh.upper()}{k}; }} to{sh.upper()}{k};")
@@ -248,7 +259,8 @@ def apply(font, kit):
     fsm.append("  sub @X' lookup toX0;")
     fsm.append("} FSM;")
     fea += fsm
-    fea.append("feature calt { lookup TOK; lookup XFILL; lookup FSM; } calt;")
+    fea.append("feature calt { lookup TOK; lookup XFILL; " + "".join(f"lookup BAND{i}; " for i in range(nb))
+               + "lookup FSM; } calt;")
 
     # --- the tokenizer lookup, built by hand (format 1, many subtables)
     all_toks = v.tokens()
@@ -280,40 +292,29 @@ def apply(font, kit):
 
     def records(n: int, starts: list[int]):
         """SubstLookupRecords for a match of n glyphs with token starts at
-        `starts`: lookups 0/1/2 = toS/toM/toE, 4 = XFILL (1-char tokens)."""
+        `starts`: lookups 0/1/2 = toS/toM/toE, XFILL_IDX (1-char tokens)."""
         ends = [s - 1 for s in starts[1:]] + [n - 1]
         recs = []
         for st, en in zip(starts, ends):
             if st == en:
-                recs.append((st, 4))
+                recs.append((st, XFILL_IDX))
             else:
                 recs += [(st, 0)] + [(i, 1) for i in range(st + 1, en)] + [(en, 2)]
         return recs
 
     rules = []  # (sort key, rule); longest first, word rules before vocab rules
-    # SuperBPE-style vocabularies have tokens that cross word boundaries
-    # (" of the other"). Some end in a fragment (", h") that BPE almost never
-    # emits, because the following letters merge into their own word first,
-    # and greedy would grab them (", h" + "alf"). So multi-word tokens only
-    # fire when the next glyph is not a letter or digit, which needs class
-    # based lookahead: class 1 = letters/digits, class 2 = space, 0 = rest.
-    # (A token at the very end of a line has no next glyph and falls back to
-    # shorter tokens; lines rarely end mid-sentence without punctuation.)
-    superword = lambda t: re.search(r"[^\W\d_] +[^\W\d_]", t) is not None  # letters, space(s), letters
-    multiword = any(superword(t) for t in toks)
-    la_classes = None
-    if multiword:
-        la_classes = {}
-        for c, g in chars.items():
-            k = 1 if c.isalnum() else 2 if c == " " else 0
-            if k:
-                la_classes[g] = k
-                for sh in SHAPES:
-                    la_classes[f"{g}.{sh}"] = k
-                    for n in range(NCOLORS):
-                        la_classes[f"{g}.{sh}{n}"] = k
-    la_space = [2] if multiword else [sp]
+    # SuperBPE trains in two stages: ordinary pretokenized BPE, then merges
+    # across pretoken boundaries (" of the other", but also "way," and " (d").
+    # Every stage-2 token competes by rank with the others, so all of them go
+    # to the rank bands below; the greedy lookup keeps the stage-1 tokens.
+    # The stage boundary is the rank of the first letters-space-letters token.
+    band_toks = set()
+    if nb:
+        stage2 = min(v.rank.get(t, 10**9) for t in toks if superword(t))
+        band_toks = {t for t in toks if v.rank.get(t, 10**9) >= stage2 and t.strip(" ")}
     for t in toks:
+        if t in band_toks:
+            continue
         inp = [chars[c] for c in t]
         recs = records(len(inp), [0])
         if t.strip(" ") == "" and space_attaches:
@@ -321,16 +322,15 @@ def apply(font, kit):
             # follows (tiktoken's whitespace rule); otherwise the last space
             # belongs to the next word. Trailing runs at end of line are the
             # one case we can't express (no "end of text" lookahead).
-            rules.append(((-len(t), 1), ([], inp, la_space, recs)))
-        elif multiword and " " in t.strip(" "):  # any token with an inner space, in a superword vocabulary
-            rules.append(((-len(t), 1), ([], inp, [0], recs)))
-            rules.append(((-len(t), 1), ([], inp, [2], recs)))
+            rules.append(((-len(t), 1), ([], inp, [sp], recs)))
         else:
             rules.append(((-len(t), 1), (inp, recs)))
     nword = 0
+    word_split = {}
     for form, starts, bt in word_rules(v, vocab_set, chars):
         inp = [chars[c] for c in form]
         rules.append(((-len(form), 0), (bt, inp, [], records(len(inp), starts))))
+        word_split[form] = starts
         nword += 1
     rules.sort(key=lambda r: r[0])
     rules = [r for _, r in rules]
@@ -346,10 +346,72 @@ def apply(font, kit):
                     word_glyphs[f"{g}.{sh}"] = 1
                     for k in range(NCOLORS):
                         word_glyphs[f"{g}.{sh}{k}"] = 1
-    tok_lookup = build_chain_lookup_format1(font, rules, backtrack_classes=word_glyphs,
-                                            lookahead_classes=la_classes)
-    print(f"tokenizer[{VARIANT}]: {len(toks)} vocab rules + {nword} word rules, "
-          f"{len(names)} chars, {tok_lookup.SubTableCount} subtables, "
-          f"space-attaches={space_attaches}, superwords={sum(map(superword, toks)) if multiword else 0}")
+    tok_lookup = build_chain_lookup_format1(font, rules, backtrack_classes=word_glyphs)
+    overrides = {TOK_IDX: tok_lookup}
+    nsub = tok_lookup.SubTableCount
 
-    kit.add_fea("\n".join(fea), overrides={3: tok_lookup})
+    # --- superwords (SuperBPE): merges of already-shaped tokens, by rank.
+    # BPE forms single words first, then applies the cross-word merges in
+    # rank order: " of the" (rank 180k) beats " fan of" (186k) in "fan of
+    # the", and "By the way" is built from " the way". So after TOK and XFILL
+    # have shaped everything, NBANDS lookups re-shape superwords, lowest ranks
+    # first. A superword's rule matches the exact shape pattern its parts
+    # have after the earlier passes (" of" = .s .m .e, then " the" = .s .m .m
+    # .e), one rule per way of building it from vocabulary pieces. Because the
+    # pattern must line up with whole tokens, a fragment token like ", h"
+    # never fires inside ", half" (the h is .m there), and no lookahead is
+    # needed, so a superword at the very end of a line works too.
+    bands = [[] for _ in range(nb)]
+    nsw = 0
+    if nb:
+        rank = lambda t: v.rank.get(t, 10**9)
+        sw = sorted(band_toks, key=rank)
+        band_of = {t: min(nb - 1, i * nb // len(sw)) for i, t in enumerate(sw)}
+        PIECE = re.compile(r" ?\w+| ?[^\w\s]+|\s+")
+
+        def shaped(piece):
+            starts = word_split.get(piece) or greedy(piece, vocab_set)
+            ends = [x - 1 for x in starts[1:]] + [len(piece) - 1]
+            out = []
+            for st, en in zip(starts, ends):
+                g = [chars[c] for c in piece[st:en + 1]]
+                out += [g[0] + ".x"] if st == en else [g[0] + ".s"] + [x + ".m" for x in g[1:-1]] + [g[-1] + ".e"]
+            return out
+
+        def merged(seg):
+            g = [chars[c] for c in seg]
+            return [g[0] + ".s"] + [x + ".m" for x in g[1:-1]] + [g[-1] + ".e"]
+
+        def segmentations(pieces, limit):
+            if not pieces:
+                yield []
+                return
+            for k in range(1, len(pieces) + 1):
+                seg = "".join(pieces[:k])
+                if k == 1 or (seg in band_toks and rank(seg) < limit):
+                    for rest in segmentations(pieces[k:], limit):
+                        yield [seg] + rest
+
+        for t in sw:
+            pieces = PIECE.findall(t)
+            if "".join(pieces) != t or len(pieces) < 2:
+                continue
+            recs = records(len(t), [0])
+            pats = set()
+            for segs in segmentations(pieces, rank(t)):
+                if len(segs) == 1:
+                    continue
+                pats.add(tuple(x for seg in segs for x in (merged(seg) if seg in band_toks else shaped(seg))))
+            for pat in pats:
+                bands[band_of[t]].append(((-len(pat), 1), (list(pat), recs)))
+            nsw += 1
+    for i, band in enumerate(bands):
+        band.sort(key=lambda r: r[0])
+        lk = build_chain_lookup_format1(font, [r for _, r in band])
+        overrides[XFILL_IDX + 1 + i] = lk
+        nsub += lk.SubTableCount
+    print(f"tokenizer[{VARIANT}]: {len(toks)} vocab rules + {nword} word rules, "
+          f"{len(names)} chars, {nsub} subtables, space-attaches={space_attaches}"
+          + (f", superwords={nsw} ({sum(map(len, bands))} patterns) in {nb} rank bands" if nb else ""))
+
+    kit.add_fea("\n".join(fea), overrides=overrides)

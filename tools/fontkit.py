@@ -274,7 +274,9 @@ def export(font: TTFont, out_dir: Path, stem: str) -> list[Path]:
 
 def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
                                backtrack_classes: dict[str, int] | None = None,
-                               lookahead_classes: dict[str, int] | None = None) -> otTables.Lookup:
+                               lookahead_classes: dict[str, int] | None = None,
+                               input_classes: dict[str, int] | None = None,
+                               coverage_exclude: set[str] | None = None) -> otTables.Lookup:
     """Build a GSUB type 6 (chained contextual) lookup using format 1 (glyph
     based rule sets), split across as many Extension-wrapped subtables as the
     16-bit offset limits require.
@@ -291,20 +293,33 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
     is then a list of class numbers, which lets a rule say "preceded by (or
     followed by) anything that is not a letter". A context that runs past the
     start or end of the text never matches, as in format 1.
+
+    input_classes (glyph -> class) replaces the one-class-per-glyph input map:
+    rules are still written with base glyph names, but any glyph of the same
+    class matches in their place (a letter and its shape variants, say). The
+    coverage then lists every glyph of a first glyph's class, minus
+    coverage_exclude.
     """
     gid = font.getReverseGlyphMap()
     by_first: dict[str, list] = {}
     for r in rules:
         bt, inp, la, recs = r if len(r) == 4 else ([], r[0], [], r[1])
         by_first.setdefault(inp[0], []).append((bt, inp, la, recs))
-    fmt2 = backtrack_classes is not None or lookahead_classes is not None
+    fmt2 = backtrack_classes is not None or lookahead_classes is not None or input_classes is not None
     if fmt2:
         budget = min(budget, 48000)  # leave room for the class tables + set offsets
-        seen = {g for rl in by_first.values() for _, inp, la, _ in rl
-                for g in list(inp) + (list(la) if lookahead_classes is None else [])
-                + (list(bt) if backtrack_classes is None else [])}
-        seen = sorted(seen, key=gid.get)
-        cls = {g: i + 1 for i, g in enumerate(seen)}
+        if input_classes is None:
+            seen = {g for rl in by_first.values() for bt, inp, la, _ in rl
+                    for g in list(inp) + (list(la) if lookahead_classes is None else [])
+                    + (list(bt) if backtrack_classes is None else [])}
+            seen = sorted(seen, key=gid.get)
+            cls = {g: i + 1 for i, g in enumerate(seen)}
+        else:
+            cls = dict(input_classes)
+        members: dict[int, list] = {}
+        for g, k in cls.items():
+            if not coverage_exclude or g not in coverage_exclude:
+                members.setdefault(k, []).append(g)
         in_def = otTables.ClassDef(); in_def.classDefs = dict(cls)
         bt_def, la_def = in_def, in_def
         if backtrack_classes is not None:
@@ -370,7 +385,10 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
         chunk = sorted(chunk, key=lambda c: gid[c[0]])
         st = otTables.ChainContextSubst()
         st.Coverage = otTables.Coverage()
-        st.Coverage.glyphs = [c[0] for c in chunk]
+        if fmt2:
+            st.Coverage.glyphs = sorted({g for first, _ in chunk for g in members[cls[first]]}, key=gid.get)
+        else:
+            st.Coverage.glyphs = [c[0] for c in chunk]
         if not fmt2:
             st.Format = 1
             st.ChainSubRuleSet = []
@@ -383,7 +401,7 @@ def build_chain_lookup_format1(font: TTFont, rules, budget: int = 60000,
         else:
             st.Format = 2
             st.BacktrackClassDef, st.InputClassDef, st.LookAheadClassDef = bt_def, in_def, la_def
-            sets = [None] * (len(cls) + 1)
+            sets = [None] * (max(cls.values()) + 1)
             for first, rl in chunk:
                 rs = otTables.ChainSubClassSet()
                 rs.ChainSubClassRule = [make_rule(*rule, True) for rule in rl]

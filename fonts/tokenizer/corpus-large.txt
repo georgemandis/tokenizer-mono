@@ -1,3 +1,4 @@
+## mixed
 The quick brown fox jumps over the lazy dog, and nobody is surprised anymore.
 Tokenization is the process of splitting text into pieces a language model can count.
 Byte-pair encoding starts from single bytes and repeatedly merges the most frequent pair.
@@ -201,3 +202,55 @@ She said, “I don’t think they’ve seen it,” and shrugged — it wasn’t 
 Naïve résumé writers overuse the word “synergy”; the clichés pile up like crème brûlée.
 Prices: €1,299.99 or £1,099 (≈ $1,450), ±2% depending on the exchange rate… allegedly.
 The Übermensch, the façade, the jalapeño, the smörgåsbord: borrowed words keep their hats.
+
+## prose
+By the way, I am a fan of the Milky Way!
+Six of one, half a dozen of the other.
+It was the best of times, it was the worst of times.
+She said she'd be there by nine, but you know how she is.
+I don't think that's what he meant, to be honest.
+We've been waiting for the bus for twenty minutes now.
+Call me when you get home, okay?
+The meeting is at 3:30 pm on Tuesday, March 4th.
+He was born in 1987 and moved to Chicago in 2009.
+It costs $4.99 a month, or $49 a year if you pay up front.
+Turn left at the second light and it's on your right.
+There's no such thing as a free lunch.
+Honestly, I couldn't care less about the score.
+The New York Times reported it first, then everyone else followed.
+Have you read "Pride and Prejudice"? It's better than the film.
+Dr. Martinez will see you now; please follow me.
+My email is someone@example.com and my site is https://example.org/about.
+The results were 42, 17, 8 and 3, in that order.
+Wait, what? That can't be right. Let me check again.
+A stitch in time saves nine, as my grandmother used to say.
+Nobody expected the Spanish Inquisition.
+Please don't feed the ducks; the bread is bad for them.
+Well, that escalated quickly.
+The quick brown fox jumps over the lazy dog.
+To be, or not to be, that is the question.
+All of the above, none of the below.
+In the beginning there was nothing, which exploded.
+I'll have what she's having.
+Thanks so much for your help yesterday, it really made a difference.
+On the other hand, we could just stay in and order pizza.
+The average temperature in July is 28 degrees, give or take.
+Out of sight, out of mind.
+You can't make an omelette without breaking a few eggs.
+What time does the train to Edinburgh leave on Sunday mornings?
+Their house is the blue one at the end of the street, next to the park.
+Breaking news: local man finds keys in the first place he looked.
+As far as I know, nobody has tried this before.
+He's not the Messiah, he's a very naughty boy!
+The committee will meet again in the first week of October.
+We need more milk, eggs, flour, and a little bit of patience.
+ARE YOU SURE ABOUT THAT? Because I'm really not.
+Once upon a time, in a land far, far away, there lived a king.
+It's not rocket science, but it's not exactly easy either.
+Add two cups of water, bring to a boil, then simmer for ten minutes.
+According to the manual, the warranty is void if you open the case.
+Would you rather fight one horse-sized duck or a hundred duck-sized horses?
+I was going to say something, but then I forgot what it was.
+The Great Wall of China is not visible from space, whatever people say.
+Could you pass the salt? No, the other one. Thanks.
+Fine. Whatever. Do what you want, I'm going to bed.

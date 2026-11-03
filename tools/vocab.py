@@ -51,11 +51,14 @@ class Tiktoken(_Base):
 
     def tokens(self) -> list[str]:
         out = []
-        for t in self.enc._mergeable_ranks:
+        self.rank = {}  # token text -> merge rank (lower merges first)
+        for t, r in self.enc._mergeable_ranks.items():
             try:
-                out.append(t.decode("utf-8"))
+                s = t.decode("utf-8")
             except UnicodeDecodeError:
-                pass  # partial UTF-8 sequence: not a text token on its own
+                continue  # partial UTF-8 sequence: not a text token on its own
+            out.append(s)
+            self.rank[s] = r
         return out
 
     def boundaries(self, text: str) -> set[int]:
@@ -113,17 +116,19 @@ class HF(_Base):
         added = self.tok.get_added_tokens_decoder().values()
         special = {a.content for a in added if a.special}
         plain_added = {a.content for a in added if not a.special}
-        for s in self.tok.get_vocab():
+        self.rank = {}  # token text -> vocabulary id, which follows merge order for BPE
+        for s, i in self.tok.get_vocab().items():
             if s in special or BYTE_FALLBACK.match(s):
                 continue
             if s in plain_added:
                 # Added (non-special) tokens are literal text, except that
                 # SentencePiece-style models (Gemma) write spaces as U+2581.
-                out.append(s.replace("\u2581", " "))
-                continue
-            t = self._to_text(s)
+                t = s.replace("\u2581", " ")
+            else:
+                t = self._to_text(s)
             if t:
                 out.append(t)
+                self.rank[t] = i
         return out
 
     def boundaries(self, text: str) -> set[int]:

@@ -101,13 +101,20 @@ Two kinds of tokenizer need extra handling:
   ends with a suffix (`hello</w>`). The suffix is stripped and every rule is
   emitted three times, for the lower, Capitalized and ALL-CAPS spellings.
 
-SuperBPE is the odd one out in the other direction: its tokens cross word
-boundaries (" of the other" is one token). Some of them end in a fragment
-(", h") that BPE almost never emits, because the letters after it merge
-into their own word first, but greedy would grab ", h" and leave "alf". So in
-a superword vocabulary every token with an inner space gets a class-based
-lookahead and only fires when the next glyph is not a letter or digit. The
-whole-word rules still only know single words, so its accuracy stays lower.
+SuperBPE is the odd one out in the other direction: it trains in two
+stages, ordinary BPE and then merges across word boundaries, so " of the
+other" is one token and so are "way," and " (d". Greedy longest-match gets
+these badly wrong (", h" + "alf"; " fan of" where BPE says " fan" + " of
+the"). The recipe instead treats stage-2 tokens the way BPE does, as merges
+of tokens that already exist: after the greedy lookup and XFILL have shaped
+every stage-1 token, 32 further lookups re-shape superwords in rank order,
+lowest ranks first. Each superword rule matches the exact shape pattern of
+its parts (" of" is `.s .m .e`, " the" is `.s .m .m .e`), with one rule per
+way of building it from smaller tokens, so "By the way" can form on top of
+" the way". A pattern only lines up with whole tokens, which is what stops
+", h" inside ", half" (that h is a `.m`), and no lookahead is needed, so a
+superword at the end of a line works too. The whole-word rules still only
+know single words, so SuperBPE stays a few points behind the others.
 
 Every character Plex Mono has a glyph for is covered (1,001 characters: ASCII,
 Latin-1, Latin Extended-A, curly quotes, dashes, currency...), so "café" and
@@ -120,33 +127,33 @@ from a local run of the current build, reproduced by CI on every push (sorted by
 
 | face | precision | recall | tokens font / real | shaping | TTF |
 |---|---|---|---|---|---|
-| bert | 99.4% | 99.1% | 2638 / 2645 | 7 µs/char | 4.9 MB |
-| r50k | 98.6% | 98.7% | 3091 / 3088 | 65 µs/char | 8.6 MB |
-| yi | 98.5% | 98.5% | 2493 / 2493 | 40 µs/char | 8.6 MB |
-| gemma | 98.2% | 98.1% | 2262 / 2264 | 46 µs/char | 14.5 MB |
-| p50k | 98.1% | 98.3% | 2406 / 2403 | 40 µs/char | 8.6 MB |
-| neox | 98.1% | 97.8% | 2331 / 2338 | 40 µs/char | 8.8 MB |
-| gemma3 | 98.0% | 98.0% | 2273 / 2274 | 53 µs/char | 13.8 MB |
-| granite | 97.8% | 97.8% | 2367 / 2368 | 50 µs/char | 9.7 MB |
-| mistral | 97.6% | 98.0% | 2480 / 2470 | 46 µs/char | 8.6 MB |
-| ernie | 97.6% | 97.6% | 2330 / 2328 | 42 µs/char | 9.8 MB |
-| llama2 | 97.6% | 97.3% | 2508 / 2514 | 57 µs/char | 8.8 MB |
-| qwen | 97.5% | 97.3% | 2178 / 2181 | 43 µs/char | 11.1 MB |
-| cl100k | 97.4% | 97.3% | 2150 / 2153 | 41 µs/char | 10.8 MB |
-| hunyuan | 97.4% | 96.0% | 2151 / 2182 | 41 µs/char | 10.8 MB |
-| llama3 | 97.3% | 97.2% | 2152 / 2153 | 52 µs/char | 11.3 MB |
-| o200k | 97.2% | 97.3% | 2148 / 2146 | 48 µs/char | 13.1 MB |
-| glm | 97.1% | 96.4% | 2139 / 2156 | 59 µs/char | 11.7 MB |
-| deepseek | 96.8% | 96.9% | 2250 / 2247 | 43 µs/char | 9.9 MB |
-| falcon3 | 96.7% | 98.2% | 2408 / 2371 | 38 µs/char | 11.4 MB |
-| falcon | 96.7% | 98.0% | 2524 / 2492 | 40 µs/char | 9.1 MB |
-| llama4 | 96.6% | 96.7% | 2158 / 2156 | 51 µs/char | 13.6 MB |
-| seed | 96.5% | 96.9% | 2240 / 2232 | 44 µs/char | 10.5 MB |
-| tekken | 96.5% | 96.5% | 2282 / 2281 | 48 µs/char | 11.2 MB |
-| clip | 95.8% | 96.0% | 2308 / 2302 | 5 µs/char | 9.0 MB |
-| bloom | 93.2% | 93.8% | 2236 / 2221 | 55 µs/char | 12.9 MB |
-| superbpe | 87.2% | 89.2% | 1931 / 1886 | 62 µs/char | 16.5 MB |
-| t5 | 83.0% | 92.7% | 2854 / 2556 | 32 µs/char | 7.1 MB |
+| bert | 99.5% | 99.3% | 3341 / 3348 | 4 µs/char | 5.0 MB |
+| r50k | 98.9% | 98.9% | 3758 / 3755 | 60 µs/char | 8.6 MB |
+| gemma | 98.7% | 98.6% | 2963 / 2965 | 46 µs/char | 14.5 MB |
+| yi | 98.6% | 98.7% | 3209 / 3208 | 44 µs/char | 8.6 MB |
+| p50k | 98.5% | 98.6% | 3073 / 3070 | 42 µs/char | 8.6 MB |
+| gemma3 | 98.5% | 98.5% | 2975 / 2976 | 45 µs/char | 13.8 MB |
+| neox | 98.4% | 98.2% | 3004 / 3011 | 43 µs/char | 8.8 MB |
+| granite | 98.3% | 98.2% | 3108 / 3109 | 54 µs/char | 9.7 MB |
+| ernie | 98.0% | 98.1% | 3050 / 3047 | 48 µs/char | 9.8 MB |
+| qwen | 98.0% | 97.9% | 2861 / 2864 | 46 µs/char | 11.1 MB |
+| cl100k | 98.0% | 97.9% | 2823 / 2826 | 45 µs/char | 10.9 MB |
+| hunyuan | 98.0% | 96.6% | 2824 / 2865 | 45 µs/char | 10.8 MB |
+| llama3 | 97.9% | 97.8% | 2825 / 2826 | 48 µs/char | 11.3 MB |
+| mistral | 97.8% | 98.4% | 3218 / 3199 | 50 µs/char | 8.6 MB |
+| o200k | 97.8% | 97.9% | 2802 / 2800 | 52 µs/char | 13.1 MB |
+| glm | 97.8% | 96.9% | 2802 / 2829 | 48 µs/char | 11.7 MB |
+| llama2 | 97.7% | 97.8% | 3266 / 3265 | 51 µs/char | 8.8 MB |
+| falcon3 | 97.5% | 98.6% | 3112 / 3075 | 41 µs/char | 11.4 MB |
+| deepseek | 97.5% | 97.6% | 2924 / 2921 | 46 µs/char | 9.9 MB |
+| falcon | 97.3% | 98.3% | 3225 / 3192 | 43 µs/char | 9.1 MB |
+| llama4 | 97.3% | 97.4% | 2815 / 2813 | 55 µs/char | 13.6 MB |
+| seed | 97.2% | 97.5% | 2925 / 2916 | 47 µs/char | 10.5 MB |
+| tekken | 97.1% | 97.2% | 2977 / 2975 | 51 µs/char | 11.2 MB |
+| clip | 96.7% | 96.9% | 2984 / 2978 | 5 µs/char | 9.0 MB |
+| bloom | 94.5% | 95.0% | 2893 / 2877 | 58 µs/char | 12.9 MB |
+| superbpe | 93.0% | 94.5% | 2384 / 2346 | 53 µs/char | 15.4 MB |
+| t5 | 85.7% | 94.1% | 3605 / 3280 | 35 µs/char | 7.1 MB |
 
 The outliers are explained by their algorithms: T5 is a Unigram model that
 picks splits by likelihood, which no longest-match scheme can reproduce;
@@ -171,7 +178,9 @@ compared:
   under-splits).
 
 Only boundaries are compared because that is all the font can be right or
-wrong about; it never knows token IDs. The corpus is about 200 lines of
+wrong about; it never knows token IDs. The corpus is about 230 lines in two sections, `mixed` (prose, the OFL text, Python, a little JavaScript and SQL, and some accented and curly-quoted lines) and `prose` (50 everyday sentences, idioms, dates, prices, names). The corpus has sections (`## name`
+lines), and the check prints a per-section breakdown after the summary, so
+a change that helps prose but hurts code shows up as such. The corpus is about 200 lines of
 English prose (including the OFL license text), Python from the standard
 library, some JavaScript and SQL, and a few lines with curly quotes, accents
 and currency symbols. Nothing in it was used to build the fonts: the word
@@ -193,8 +202,29 @@ Rendering notes learned the hard way:
   a seam. The overlap is always hidden under the next glyph's own box.
 - Verified in Chromium (headless, pixel-checked) and Safari (by eye).
   Firefox not yet checked.
+- Safari (CoreText) shapes each laid-out line on its own, so a token that
+  would span a soft wrap is split at the wrap. Chrome shapes the paragraph
+  and then wraps it, so the same text can differ between the two.
 - `tools/gallery.py` renders one line per variant; `tools/shot.py` renders
   any built font. Both use Playwright's cached Chromium headlessly.
+
+### Checking a sentence by hand
+
+To compare a sentence from one of the online tokenizer playgrounds with the
+font, without a browser:
+
+    python tools/compare.py superbpe "By the way, I am a fan of the Milky Way!"
+
+prints the font's split and the real tokenizer's split, side by side, and
+says OK or DIFF. `make tokcheck V=<face>` with `-v` (see `tools/tokcheck.py`)
+also lists the font tokens that most often disagree with the real tokenizer,
+which is the quickest way to spot a bad rule (that is how ", h" was found).
+
+Both tools shape with HarfBuzz, which is what Chrome, Firefox and Android
+use. Safari and macOS apps shape with CoreText, which lays out each *line*
+on its own: a token that would span a soft wrap is split at the wrap, so a
+long sentence in a narrow box can look different in Safari than in Chrome.
+Widen the box, or compare in Chrome, before deciding a split is a bug.
 
 ## Setup
 
