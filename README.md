@@ -305,7 +305,7 @@ layout so `demo/tokenizer.html` works from the unzipped folder, plus a
 WOFF2-only zip). Pushing a `v*` tag also creates a GitHub release with both
 zips attached and the accuracy table in the notes:
 
-    git tag v0.1.2 && git push origin v0.1.2
+    git tag v0.2.0 && git push origin v0.2.0
 
 ## Naming
 
