@@ -200,11 +200,10 @@ Rendering notes learned the hard way:
   overlap the next glyph by more than one device pixel at the smallest size
   you care about (120 units here), or its anti-aliased edge column shows as
   a seam. The overlap is always hidden under the next glyph's own box.
-- Verified in Chromium (headless, pixel-checked) and Safari (by eye).
-  Firefox not yet checked.
+- Verified in Chromium (headless, pixel-checked), Firefox and Safari (by eye).
 - Safari (CoreText) shapes each laid-out line on its own, so a token that
-  would span a soft wrap is split at the wrap. Chrome shapes the paragraph
-  and then wraps it, so the same text can differ between the two.
+  would span a soft wrap is split at the wrap. Chrome and Firefox shape the
+  paragraph and then wrap it, so the same text can differ in Safari.
 - `tools/gallery.py` renders one line per variant; `tools/shot.py` renders
   any built font. Both use Playwright's cached Chromium headlessly.
 
