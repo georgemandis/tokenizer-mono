@@ -16,7 +16,7 @@ jobs:
       matrix:
         variant: [cl100k, o200k, p50k, r50k, llama4, llama3, llama2, gemma3, gemma,
                   mistral, tekken, qwen, deepseek, glm, neox, falcon, bloom, t5, bert,
-                  superbpe, granite, falcon3, hunyuan, ernie, seed, yi, clip]
+                  superbpe, granite, falcon3, hunyuan, ernie, seed, yi, clip, kimi]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

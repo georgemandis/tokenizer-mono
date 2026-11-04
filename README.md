@@ -45,7 +45,7 @@ legacy family name (ID 1) and the file name carry the variant.
 | bloom    | bigscience/bloom                        | BigScience BLOOM (multilingual) |
 | t5       | google-t5/t5-base                       | Google T5 (SentencePiece Unigram, not BPE) |
 | bert     | bert-base-cased                         | Google BERT (WordPiece; ## continuations approximated) |
-| superbpe | 87.2% | 89.2% | 1931 / 1886 | 62 µs/char | 16.5 MB |
+| superbpe | UW/OLMo2-8B-SuperBPE-t180k              | UW SuperBPE for OLMo 2 (tokens cross word boundaries) |
 | granite  | ibm-granite/granite-3.3-8b-instruct     | IBM Granite 3 and Granite Code (StarCoder vocabulary); also StarCoder |
 | falcon3  | tiiuae/Falcon3-7B-Base                  | TII Falcon 3 |
 | hunyuan  | tencent/Hunyuan-7B-Instruct             | Tencent Hunyuan |
@@ -53,15 +53,18 @@ legacy family name (ID 1) and the file name carry the variant.
 | seed     | ByteDance-Seed/Seed-OSS-36B-Instruct    | ByteDance Seed-OSS |
 | yi       | 01-ai/Yi-1.5-9B                         | 01.AI Yi (SentencePiece) |
 | clip     | openai/clip-vit-base-patch32            | OpenAI CLIP, Stable Diffusion prompts (lowercases; no whitespace tokens) |
+| kimi     | moonshotai/Kimi-K2-Instruct (tiktoken.model) | Moonshot Kimi K2 (tiktoken-format vocabulary) |
 
-![The same sentence in all 27 faces](docs/gallery.png)
+![The same sentence in all 28 faces](docs/gallery.png)
 
 Many models share a vocabulary, so one face covers several: Phi-4, OLMo 2
 and Granite 4 use cl100k, gpt-oss uses o200k, Qwen 3 uses Qwen 2.5's, SmolLM 3
 uses Llama 3's, Nemotron-H and Apertus use Tekken, CodeLlama and Phi-3 use
-Llama 2's, Pythia uses NeoX's, StarCoder uses Granite 3's. Kimi K2 and Grok 2
-publish their vocabularies in other formats (a tiktoken file, xAI's own JSON)
-rather than `tokenizer.json`; Cohere and AI21 gate theirs behind a terms page.
+Llama 2's, Pythia uses NeoX's, StarCoder uses Granite 3's. Kimi K2 has no
+`tokenizer.json`; it ships a tiktoken-format `tiktoken.model`, which
+`tools/vocab.py` loads with the pattern string from Kimi's own tokenizer
+code. Grok 2 publishes its vocabulary only in xAI's own JSON format; Cohere
+and AI21 gate theirs behind a terms page.
 Anthropic's tokenizer is not public, so there is no Claude face.
 
 ### Where the "also" claims come from
@@ -178,6 +181,7 @@ from a local run of the current build, reproduced by CI on every push (sorted by
 | o200k | 97.8% | 97.9% | 2802 / 2800 | 52 µs/char | 13.1 MB |
 | glm | 97.8% | 96.9% | 2802 / 2829 | 48 µs/char | 11.7 MB |
 | llama2 | 97.7% | 97.8% | 3266 / 3265 | 51 µs/char | 8.8 MB |
+| kimi | 97.7% | 97.6% | 2810 / 2811 | 45 µs/char | 10.3 MB |
 | falcon3 | 97.5% | 98.6% | 3112 / 3075 | 41 µs/char | 11.4 MB |
 | deepseek | 97.5% | 97.6% | 2924 / 2921 | 46 µs/char | 9.9 MB |
 | falcon | 97.3% | 98.3% | 3225 / 3192 | 43 µs/char | 9.1 MB |

@@ -70,6 +70,22 @@ class Tiktoken(_Base):
         return out
 
 
+class TiktokenFile(Tiktoken):
+    """A tiktoken-format vocabulary published on the Hub (Kimi K2 ships
+    tiktoken.model plus a tokenization_*.py whose pat_str we read as-is)."""
+
+    def __init__(self, repo: str):
+        import tiktoken
+        from huggingface_hub import hf_hub_download
+        from tiktoken.load import load_tiktoken_bpe
+        model = hf_hub_download(repo, "tiktoken.model", cache_dir=HF_CACHE)
+        ranks = load_tiktoken_bpe(model)
+        code = Path(hf_hub_download(repo, "tokenization_kimi.py", cache_dir=HF_CACHE)).read_text()
+        m = re.search(r'pat_str = "\|"\.join\(\s*\[(.*?)\]\s*\)', code, re.S)
+        parts = re.findall(r'r"""(.*?)"""', m.group(1), re.S)
+        self.enc = tiktoken.Encoding(name=repo, pat_str="|".join(parts), mergeable_ranks=ranks, special_tokens={})
+
+
 class HF(_Base):
     def __init__(self, repo: str):
         from huggingface_hub import hf_hub_download
@@ -171,4 +187,6 @@ def load(spec: str):
         return Tiktoken(name)
     if kind == "hf":
         return HF(name)
+    if kind == "tiktokenfile":
+        return TiktokenFile(name)
     raise ValueError(spec)

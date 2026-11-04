@@ -61,6 +61,7 @@ VARIANTS = {
     "seed":     ("hf:ByteDance-Seed/Seed-OSS-36B-Instruct", "Tokenizer Mono Seed", "ByteDance Seed-OSS"),
     "yi":       ("hf:01-ai/Yi-1.5-9B",              "Tokenizer Mono Yi",       "01.AI Yi (SentencePiece)"),
     "clip":     ("hf:openai/clip-vit-base-patch32", "Tokenizer Mono CLIP",     "OpenAI CLIP, Stable Diffusion prompts (lowercases; no whitespace tokens)"),
+    "kimi":     ("tiktokenfile:moonshotai/Kimi-K2-Instruct", "Tokenizer Mono Kimi", "Moonshot Kimi K2 (tiktoken-format vocabulary)"),
 }
 VARIANT = "cl100k"
 FAMILY = VARIANTS[VARIANT][1]
