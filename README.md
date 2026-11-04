@@ -1,3 +1,4 @@
+![Tokenizer font cycling through different faces](https://george.mand.is/media/tokenizer-cycle-labeled.gif)
 # tokenizer-mono
 
 **Download the fonts**: the [latest release](https://github.com/georgemandis/tokenizer-mono/releases/latest)
