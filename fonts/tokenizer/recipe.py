@@ -219,7 +219,9 @@ def apply(font, kit):
     #   color singles (toS0..toX4 = 20 lookups), then FSM.
     v = vocab.load(VARIANTS[VARIANT][0])
     superword = lambda t: re.search(r"[^\W\d_] +[^\W\d_]", t) is not None  # letters, space(s), letters
-    multiword = any(superword(t) for t in v.tokens())
+    # Only tokens the font can draw count (DeepSeek's sole "superwords" are
+    # fim/tool markers with fullwidth bars outside the Plex charset).
+    multiword = any(superword(t) for t in v.tokens() if len(t) <= MAX_LEN and all(c in chars for c in t))
     nb = NBANDS if multiword else 0
     TOK_IDX, XFILL_IDX = 3, 4
     fea = ["languagesystem DFLT dflt;", "languagesystem latn dflt;"]
