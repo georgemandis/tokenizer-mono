@@ -34,12 +34,12 @@ VERSION = "0.1"
 
 # name -> (vocab spec, family name, what uses it)
 VARIANTS = {
-    "cl100k":   ("tiktoken:cl100k_base",            "Tokenizer Mono cl100k",   "OpenAI GPT-4, GPT-3.5, text-embedding-3; also Phi-4, OLMo 2"),
+    "cl100k":   ("tiktoken:cl100k_base",            "Tokenizer Mono cl100k",   "OpenAI GPT-4, GPT-3.5, text-embedding-3; also Phi-4, OLMo 2, IBM Granite 4"),
     "o200k":    ("tiktoken:o200k_base",             "Tokenizer Mono o200k",    "OpenAI GPT-4o, o1, o3, GPT-4.1, gpt-oss"),
     "p50k":     ("tiktoken:p50k_base",              "Tokenizer Mono p50k",     "OpenAI Codex, text-davinci-002/003"),
     "r50k":     ("tiktoken:r50k_base",              "Tokenizer Mono r50k",     "OpenAI GPT-2, GPT-3"),
     "llama4":   ("hf:unsloth/Llama-4-Scout-17B-16E-Instruct", "Tokenizer Mono Llama4", "Meta Llama 4"),
-    "llama3":   ("hf:NousResearch/Meta-Llama-3-8B", "Tokenizer Mono Llama3",   "Meta Llama 3 / 3.1 / 3.2 / 3.3; also SmolLM 3, IBM Granite 4"),
+    "llama3":   ("hf:NousResearch/Meta-Llama-3-8B", "Tokenizer Mono Llama3",   "Meta Llama 3 / 3.1 / 3.2 / 3.3; also SmolLM 3"),
     "llama2":   ("hf:NousResearch/Llama-2-7b-hf",   "Tokenizer Mono Llama2",   "Meta Llama 2 (SentencePiece)"),
     "gemma3":   ("hf:unsloth/gemma-3-4b-it",        "Tokenizer Mono Gemma3",   "Google Gemma 3"),
     "gemma":    ("hf:unsloth/gemma-2-2b",           "Tokenizer Mono Gemma",    "Google Gemma 1 / 2"),
@@ -54,7 +54,7 @@ VARIANTS = {
     "t5":       ("hf:google-t5/t5-base",            "Tokenizer Mono T5",       "Google T5 (SentencePiece Unigram, not BPE)"),
     "bert":     ("hf:bert-base-cased",              "Tokenizer Mono BERT",     "Google BERT (WordPiece; ## continuations approximated)"),
     "superbpe": ("hf:UW/OLMo2-8B-SuperBPE-t180k",   "Tokenizer Mono SuperBPE", "UW SuperBPE for OLMo 2 (tokens cross word boundaries)"),
-    "granite":  ("hf:ibm-granite/granite-3.3-8b-instruct", "Tokenizer Mono Granite", "IBM Granite 3 (StarCoder vocabulary); also StarCoder / StarCoder2"),
+    "granite":  ("hf:ibm-granite/granite-3.3-8b-instruct", "Tokenizer Mono Granite", "IBM Granite 3 and Granite Code (StarCoder vocabulary); also StarCoder"),
     "falcon3":  ("hf:tiiuae/Falcon3-7B-Base",       "Tokenizer Mono Falcon3",  "TII Falcon 3"),
     "hunyuan":  ("hf:tencent/Hunyuan-7B-Instruct",  "Tokenizer Mono Hunyuan",  "Tencent Hunyuan"),
     "ernie":    ("hf:baidu/ERNIE-4.5-21B-A3B-PT",   "Tokenizer Mono ERNIE",    "Baidu ERNIE 4.5 (SentencePiece)"),

@@ -26,12 +26,12 @@ legacy family name (ID 1) and the file name carry the variant.
 
 | variant  | vocabulary                              | used by |
 |----------|-----------------------------------------|---------|
-| cl100k   | cl100k_base                             | OpenAI GPT-4, GPT-3.5, text-embedding-3; also Phi-4, OLMo 2 |
+| cl100k   | cl100k_base                             | OpenAI GPT-4, GPT-3.5, text-embedding-3; also Phi-4, OLMo 2, IBM Granite 4 |
 | o200k    | o200k_base                              | OpenAI GPT-4o, o1, o3, GPT-4.1, gpt-oss |
 | p50k     | p50k_base                               | OpenAI Codex, text-davinci-002/003 |
 | r50k     | r50k_base                               | OpenAI GPT-2, GPT-3 |
 | llama4   | unsloth/Llama-4-Scout-17B-16E-Instruct  | Meta Llama 4 |
-| llama3   | NousResearch/Meta-Llama-3-8B            | Meta Llama 3 / 3.1 / 3.2 / 3.3; also SmolLM 3, IBM Granite 4 |
+| llama3   | NousResearch/Meta-Llama-3-8B            | Meta Llama 3 / 3.1 / 3.2 / 3.3; also SmolLM 3 |
 | llama2   | NousResearch/Llama-2-7b-hf              | Meta Llama 2 (SentencePiece) |
 | gemma3   | unsloth/gemma-3-4b-it                   | Google Gemma 3 |
 | gemma    | unsloth/gemma-2-2b                      | Google Gemma 1 / 2 |
@@ -46,7 +46,7 @@ legacy family name (ID 1) and the file name carry the variant.
 | t5       | google-t5/t5-base                       | Google T5 (SentencePiece Unigram, not BPE) |
 | bert     | bert-base-cased                         | Google BERT (WordPiece; ## continuations approximated) |
 | superbpe | 87.2% | 89.2% | 1931 / 1886 | 62 µs/char | 16.5 MB |
-| granite  | ibm-granite/granite-3.3-8b-instruct     | IBM Granite 3 (StarCoder vocabulary); also StarCoder / StarCoder2 |
+| granite  | ibm-granite/granite-3.3-8b-instruct     | IBM Granite 3 and Granite Code (StarCoder vocabulary); also StarCoder |
 | falcon3  | tiiuae/Falcon3-7B-Base                  | TII Falcon 3 |
 | hunyuan  | tencent/Hunyuan-7B-Instruct             | Tencent Hunyuan |
 | ernie    | baidu/ERNIE-4.5-21B-A3B-PT              | Baidu ERNIE 4.5 (SentencePiece) |
@@ -56,12 +56,46 @@ legacy family name (ID 1) and the file name carry the variant.
 
 ![The same sentence in all 27 faces](docs/gallery.png)
 
-Many models share a vocabulary, so one face covers several: Phi-4 and OLMo 2
-use cl100k, gpt-oss uses o200k, Qwen 3 uses Qwen 2.5's, SmolLM 3 and Granite 4
-use Llama 3's, Nemotron-H and Apertus use Tekken, CodeLlama and Phi-3 use
-Llama 2's, Pythia uses NeoX's, StarCoder uses Granite 3's. Kimi K2 and Grok
-don't publish a `tokenizer.json`; Cohere and AI21 gate theirs behind a terms
-page. Anthropic's tokenizer is not public, so there is no Claude face.
+Many models share a vocabulary, so one face covers several: Phi-4, OLMo 2
+and Granite 4 use cl100k, gpt-oss uses o200k, Qwen 3 uses Qwen 2.5's, SmolLM 3
+uses Llama 3's, Nemotron-H and Apertus use Tekken, CodeLlama and Phi-3 use
+Llama 2's, Pythia uses NeoX's, StarCoder uses Granite 3's. Kimi K2 and Grok 2
+publish their vocabularies in other formats (a tiktoken file, xAI's own JSON)
+rather than `tokenizer.json`; Cohere and AI21 gate theirs behind a terms page.
+Anthropic's tokenizer is not public, so there is no Claude face.
+
+### Where the "also" claims come from
+
+The OpenAI mappings are tiktoken's own model table,
+[`tiktoken/model.py`](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py).
+Every other "also" was checked on 2026-11-03 by comparing text vocabularies
+with `tools/vocabdiff.py` (special tokens and byte fallbacks ignored). "+N"
+means the model adds N tokens, all chat or tool markers, and otherwise matches.
+
+| claim | compared with | result |
+|---|---|---|
+| Phi-4 uses cl100k | microsoft/phi-4 | identical |
+| OLMo 2 uses cl100k | allenai/OLMo-2-1124-7B | +14 |
+| Granite 4 uses cl100k | ibm-granite/granite-4.0-micro, granite-4.0-h-small | +12 |
+| gpt-oss uses o200k | openai/gpt-oss-20b (`o200k_harmony`) | identical |
+| Llama 3.1 / 3.2 / 3.3 use Llama 3's | unsloth/Llama-3.3-70B-Instruct, unsloth/Llama-3.2-1B | identical |
+| SmolLM 3 uses Llama 3's | HuggingFaceTB/SmolLM3-3B | +8 |
+| CodeLlama uses Llama 2's | codellama/CodeLlama-7b-hf | +16 |
+| Phi-3 uses Llama 2's | microsoft/Phi-3-mini-4k-instruct | +1 |
+| Gemma 1 and 2 share one | unsloth/gemma-2b | identical |
+| Mistral Small 3 uses Tekken | unsloth/Mistral-Small-24B-Base-2501 | identical |
+| Nemotron-H uses Tekken | nvidia/Nemotron-H-8B-Base-8K | identical |
+| Apertus uses Tekken | swiss-ai/Apertus-8B-2509 | +4 |
+| Qwen 2 and 3 use Qwen 2.5's | Qwen/Qwen2-7B, Qwen/Qwen3-8B | Qwen 2.5 = Qwen 2 + 8; Qwen 3 = +4 |
+| DeepSeek R1 uses V3's | deepseek-ai/DeepSeek-R1 | +2 |
+| Pythia uses NeoX's | EleutherAI/pythia-70m | identical |
+| Granite 3 and Granite Code use StarCoder's | ibm-granite/granite-3b-code-base-2k, bigcode/tiny_starcoder_py | identical (bigcode/starcoder itself is gated; tiny_starcoder_py ships its tokenizer) |
+| StarCoder2 | bigcode/starcoder2-7b | not the same: 86 + 66 tokens differ, so it is not claimed |
+| Stable Diffusion's text encoder (CLIP L/14) uses CLIP's | openai/clip-vit-large-patch14 | identical |
+
+The Llama, Gemma and Mistral faces are built from unsloth and NousResearch
+mirrors because the vendor repos are gated; the mirrors carry the vendors'
+`tokenizer.json` unchanged.
 
 How it works, all inside the `calt` feature:
 
