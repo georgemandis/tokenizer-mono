@@ -240,9 +240,10 @@ Rendering notes learned the hard way:
   you care about (120 units here), or its anti-aliased edge column shows as
   a seam. The overlap is always hidden under the next glyph's own box.
 - Verified in Chromium (headless, pixel-checked), Firefox and Safari (by eye).
-- Safari (CoreText) shapes each laid-out line on its own, so a token that
-  would span a soft wrap is split at the wrap. Chrome and Firefox shape the
-  paragraph and then wrap it, so the same text can differ in Safari.
+- Every browser shapes each laid-out line on its own, so a token that would
+  span a soft wrap is split at the wrap (Chrome, Firefox and Safari all do
+  this; an earlier note here wrongly singled out Safari). Resize the window
+  and the colors shift as words cross the wrap. Not fixable in the font.
 - `tools/gallery.py` renders one line per variant; `tools/shot.py` renders
   any built font. Both use Playwright's cached Chromium headlessly.
 
@@ -259,10 +260,11 @@ also lists the font tokens that most often disagree with the real tokenizer,
 which is the quickest way to spot a bad rule (that is how ", h" was found).
 
 Both tools shape with HarfBuzz, which is what Chrome, Firefox and Android
-use. Safari and macOS apps shape with CoreText, which lays out each *line*
-on its own: a token that would span a soft wrap is split at the wrap, so a
-long sentence in a narrow box can look different in Safari than in Chrome.
-Widen the box, or compare in Chrome, before deciding a split is a bug.
+use (Safari and macOS apps use CoreText). They shape the whole sentence as
+one line. Browsers break lines first and shape each *line* on its own, so a
+token that would span a soft wrap is split at the wrap in every browser, and
+a long sentence in a narrow box can look different from the tools' output.
+Widen the box, or use `white-space: nowrap`, before deciding a split is a bug.
 
 ## Setup
 
