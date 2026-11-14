@@ -11,7 +11,7 @@ lists each face's accuracy in its notes.
 serves them with no hosting on your side. One stylesheet per face:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.1/cl100k.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.2/cl100k.css">
 <style>
   textarea { font-family: "Tokenizer Mono cl100k", monospace; }
   @media (prefers-color-scheme: dark) {
@@ -23,7 +23,7 @@ serves them with no hosting on your side. One stylesheet per face:
 The stylesheet is named after the variant in the table below (`o200k.css`,
 `llama3.css`, ...) and the `font-family` is "Tokenizer Mono" plus the style
 name ("Tokenizer Mono o200k", "Tokenizer Mono Llama3", ...);
-[`manifest.json`](https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.1/manifest.json)
+[`manifest.json`](https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.2/manifest.json)
 lists every pair. `index.css` declares all the faces at once. A browser only
 downloads the faces a page uses, each about 1 MB. `--tokenizer-mono-dark` is
 the palette for dark backgrounds. With a bundler, `npm install tokenizer-mono`
@@ -327,7 +327,7 @@ layout so `demo/tokenizer.html` works from the unzipped folder, plus a
 WOFF2-only zip). Pushing a `v*` tag also creates a GitHub release with both
 zips attached and the accuracy table in the notes:
 
-    git tag v0.2.1 && git push origin v0.2.1
+    git tag v0.2.2 && git push origin v0.2.2
 
 The same tag publishes the npm package. `tools/npmpkg.py` stages it (WOFF2
 files, a stylesheet per face, `index.css`, the manifest and the license) and
@@ -335,7 +335,7 @@ the `npm` job publishes it with npm trusted publishing, so there is no token
 secret; the package's settings on npmjs.com must list this repo and
 `build.yml` as a trusted publisher. To stage it locally from `build/tokenizer`:
 
-    make npm VERSION=0.2.1    # then: npm publish ./build/npm --access public
+    make npm VERSION=0.2.2    # then: npm publish ./build/npm --access public
 
 ## Naming
 
