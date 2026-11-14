@@ -91,6 +91,16 @@ jobs:
           zip -qr tokenizer-mono-fonts.zip build/tokenizer demo README.md
           (cd build/tokenizer && zip -q ../../tokenizer-mono-woff2.zip *.woff2 manifest.json)
           ls -la tokenizer-mono-*.zip
+      - name: Stage the npm package
+        run: |
+          v="${GITHUB_REF_NAME#v}"; case "$GITHUB_REF" in refs/tags/v*) ;; *) v="0.0.0-dev" ;; esac
+          python3 tools/npmpkg.py build/tokenizer build/npm --version "$v"
+          (cd build/npm && npm pack --dry-run)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: build/npm
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: tokenizer-mono-fonts
@@ -102,3 +112,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${GITHUB_REF_NAME}" tokenizer-mono-fonts.zip tokenizer-mono-woff2.zip --title "Tokenizer Mono ${GITHUB_REF_NAME}" --notes-file notes.md
+
+  npm:
+    # Separate job so a publish failure never blocks the GitHub release.
+    # Uses npm trusted publishing (OIDC): no token secret. The package's
+    # settings on npmjs.com must list this repo and build.yml as a trusted
+    # publisher.
+    name: Publish to npm
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: pkg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - run: npm publish ./pkg --access public

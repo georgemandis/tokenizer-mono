@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 RECIPES := $(filter-out tokenizer,$(notdir $(wildcard fonts/*)))
 
-.PHONY: all setup fetch clean test $(RECIPES)
+.PHONY: all setup fetch clean test npm $(RECIPES)
 
 all: $(RECIPES) tokenizer
 
@@ -28,6 +28,10 @@ shot: smoke
 # make tokenizer V=o200k    builds one
 tokenizer:
 	$(PY) tools/build.py fonts/tokenizer $(if $(V),--variant $(V))
+
+# make npm VERSION=0.2.0   stages build/npm from build/tokenizer (npm publish build/npm)
+npm:
+	python3 tools/npmpkg.py build/tokenizer build/npm --version $(VERSION)
 
 tokcheck:
 	$(PY) tools/tokcheck.py $(or $(V),all) fonts/tokenizer/corpus-large.txt
