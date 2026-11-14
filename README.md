@@ -11,7 +11,7 @@ lists each face's accuracy in its notes.
 serves them with no hosting on your side. One stylesheet per face:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.0/cl100k.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.1/cl100k.css">
 <style>
   textarea { font-family: "Tokenizer Mono cl100k", monospace; }
   @media (prefers-color-scheme: dark) {
@@ -23,22 +23,18 @@ serves them with no hosting on your side. One stylesheet per face:
 The stylesheet is named after the variant in the table below (`o200k.css`,
 `llama3.css`, ...) and the `font-family` is "Tokenizer Mono" plus the style
 name ("Tokenizer Mono o200k", "Tokenizer Mono Llama3", ...);
-[`manifest.json`](https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.0/manifest.json)
+[`manifest.json`](https://cdn.jsdelivr.net/npm/tokenizer-mono@0.2.1/manifest.json)
 lists every pair. `index.css` declares all the faces at once. A browser only
 downloads the faces a page uses, each about 1 MB. `--tokenizer-mono-dark` is
 the palette for dark backgrounds. With a bundler, `npm install tokenizer-mono`
 and `import "tokenizer-mono/cl100k.css"`.
 
-Absurd OpenType experiments built on top of IBM Plex. Two projects live here:
-
-1. **Tokenizer font** (first): a color font whose GSUB rules approximate a BPE
-   tokenizer, so tokens are highlighted as you type. `fonts/tokenizer/`
-2. **The absurd ligature font** (later): hundreds of contextual substitutions
-   keyed to common words and phrases, so no two documents look like the same
-   font. `fonts/absurd/`
+A color font, built on IBM Plex Mono, whose GSUB rules approximate a BPE
+tokenizer, so tokens are highlighted as you type. The recipe is in
+`fonts/tokenizer/`.
 
 `fonts/smoke/` is a pipeline test: it turns the word "fire" red, respecting
-word boundaries, using the same three mechanisms both real projects need
+word boundaries, using the same three mechanisms the tokenizer font needs
 (new composite glyphs, chained contextual substitution, COLR/CPAL color).
 
 ## Tokenizer Mono
@@ -331,7 +327,7 @@ layout so `demo/tokenizer.html` works from the unzipped folder, plus a
 WOFF2-only zip). Pushing a `v*` tag also creates a GitHub release with both
 zips attached and the accuracy table in the notes:
 
-    git tag v0.2.0 && git push origin v0.2.0
+    git tag v0.2.1 && git push origin v0.2.1
 
 The same tag publishes the npm package. `tools/npmpkg.py` stages it (WOFF2
 files, a stylesheet per face, `index.css`, the manifest and the license) and
@@ -339,7 +335,7 @@ the `npm` job publishes it with npm trusted publishing, so there is no token
 secret; the package's settings on npmjs.com must list this repo and
 `build.yml` as a trusted publisher. To stage it locally from `build/tokenizer`:
 
-    make npm VERSION=0.2.0    # then: npm publish ./build/npm --access public
+    make npm VERSION=0.2.1    # then: npm publish ./build/npm --access public
 
 ## Naming
 
