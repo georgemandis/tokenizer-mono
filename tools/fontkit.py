@@ -238,12 +238,16 @@ def rename(font: TTFont, family: str, style: str, old_family: str, version: str 
             rec.string = f"{version};{ps_family}-{ps_style}"
         elif nid == 5:
             rec.string = f"Version {version}"
-        elif nid in (0, 7, 8, 9, 11, 12, 13, 14):
-            # copyright/trademark/designer/license: keep IBM's text, but strip
-            # anything that would read as an IBM product name.
+        elif nid in (0, 8, 9, 11, 12, 13, 14):
+            # copyright/designer/license: keep IBM's text, but strip anything
+            # that would read as an IBM product name.
             rec.string = s.replace(old_family, family).replace("IBM Plex", family)
         elif old_family in s:
             rec.string = s.replace(old_family, family)
+    # ID 7 is IBM's trademark notice for the Plex name. This font is not sold
+    # under that name, and rewriting the notice would claim our family name
+    # as IBM's trademark, so the record is dropped.
+    name.names = [rec for rec in name.names if rec.nameID != 7]
     if typo_family:
         for pid, eid, lid in ((3, 1, 0x409), (1, 0, 0)):
             name.setName(typo_family, 16, pid, eid, lid)
